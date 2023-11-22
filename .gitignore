@@ -1,4 +1,5 @@
 *.csv
+*.txt
 *.pth
 
 figs/*

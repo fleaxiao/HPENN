@@ -9,17 +9,18 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 
 # Hyperparameters
-NUM_EPOCH = 100
-BATCH_SIZE = 256
-DECAY_EPOCH = 100
-DECAY_RATIO = 0.5
-LR_INI = 0.0042518938806708866
+NUM_EPOCH = 20 #! 2000
+BATCH_SIZE = 400
+LR_INI = 1e-4
+WEIGHT_DECAY = 1e-8
+DECAY_EPOCH = 30
+DECAY_RATIO = 0.95
 
 # Neural Network Structure
 input_size = 13
 output_size = 24
-hidden_size = 20
-hidden_layers = 2
+hidden_size = 100 #! 1000
+hidden_layers = 2 #! 6
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -50,8 +51,10 @@ def count_parameters(model):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    inputs = df.iloc[0:13, 0:].values
+    inputs = df.iloc[:13, 0:].values
     targets = df.iloc[13:, 0:].values
+    targets[:6, 0:] = targets[:6, 0:]*1e4+1
+    targets[6:, 0:] = targets[6:, 0:]*1e6+1
     weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
     inputs = inputs.T
     targets = targets.T
@@ -62,7 +65,7 @@ def get_dataset(adr):
     weight = torch.tensor(weight, dtype=torch.float32)
 
     input_tensor = torch.log10(input_tensor)
-    out_tensor = torch.log10(out_tensor*1e6+1)
+    out_tensor = torch.log10(out_tensor)
     
     return torch.utils.data.TensorDataset(input_tensor, out_tensor, weight)
 
@@ -102,11 +105,12 @@ def main():
     net = Net().to(device)
 
     # Log the number of parameters
-    print("Number of parameters: ", count_parameters(net))
+    with open('logfile.txt','w') as f:
+        f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=2e-7)
+    optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=WEIGHT_DECAY)
     
     # Train the network
     for epoch_i in range(NUM_EPOCH):
@@ -141,6 +145,11 @@ def main():
                 f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
                 f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
                 f"Learning Rate {optimizer.param_groups[0]['lr']}")
+            with open('logfile.txt','a') as f:
+                print(f"Epoch {epoch_i+1:2d} "
+                f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
+                f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
+                f"Learning Rate {optimizer.param_groups[0]['lr']}",file=f)
 
     # Save the model parameters
     torch.save(net.state_dict(), "Model_2D_IW.pth")
@@ -163,9 +172,17 @@ def main():
 
     yy_pred = 10**(y_pred.cpu().numpy()) # tensor is transferred to numpy
     yy_meas = 10**(y_meas.cpu().numpy())
+    yy_pred = (yy_pred - 1) / 1e4
+    yy_meas = (yy_meas - 1) / 1e6
     
     # Relative Error
-    Error_re = abs(yy_pred-yy_meas)/abs(yy_meas)*100
+    Error_re = np.zeros_like(yy_meas)
+    for i in range(yy_meas.shape[0]):
+        for j in range(yy_meas.shape[1]):
+            if yy_meas[i, j] == 0:
+                Error_re[i, j] = 0
+            else:
+                Error_re[i, j] = abs(yy_pred[i, j] - yy_meas[i, j]) / abs(yy_meas[i, j]) * 100
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
@@ -178,13 +195,14 @@ def main():
     Error_Rac_Lp = 0
     Error_Llk_Ls = 0
     Error_Llk_Lp = 0
-
+    
     colors = plt.cm.viridis(np.linspace(0, 1, Error_re.shape[1]))
-    binwidth = 0.5
+    binwidth = 1e4
 
+    #TODO Could change to "bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth)" when the erro is less than 10%
     plt.figure(figsize=(8, 5))
     for i in range (int(Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
+        plt.hist(Error_re[:,i], bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
         Error_Rac_Ls += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Inner Winding')
     plt.xlabel('Error(%)')
