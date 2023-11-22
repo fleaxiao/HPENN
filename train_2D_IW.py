@@ -79,8 +79,10 @@ def main():
     # Check whether GPU is available
     if torch.cuda.is_available():
         device = torch.device("cuda")
+        print("Now this program runs on cuda")
     else:
         device = torch.device("cpu")
+        print("Now this program runs on cpu")
 
     # Load and spit dataset
     dataset = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
@@ -178,9 +180,11 @@ def main():
     Error_Llk_Lp = 0
 
     colors = plt.cm.viridis(np.linspace(0, 1, Error_re.shape[1]))
+    binwidth = 0.5
+
     plt.figure(figsize=(8, 5))
     for i in range (int(Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
+        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
         Error_Rac_Ls += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Inner Winding')
     plt.xlabel('Error(%)')
@@ -191,7 +195,7 @@ def main():
 
     plt.figure(figsize=(8, 5))
     for i in range (int(Error_re.shape[1]/4), int(2*Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
+        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') 
         Error_Rac_Lp += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Outer Winding')
     plt.xlabel('Error(%)')
@@ -202,7 +206,7 @@ def main():
 
     plt.figure(figsize=(8, 5))
     for i in range (int(2*Error_re.shape[1]/4), int(3*Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
+        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') 
         Error_Llk_Ls += np.sum(Error_re[:,i] > 5)
     plt.title('Llk Error Distribution in Inner Winding')
     plt.xlabel('Error(%)')
@@ -213,7 +217,7 @@ def main():
         
     plt.figure(figsize=(8, 5))
     for i in range (int(3*Error_re.shape[1]/4), int(Error_re.shape[1])):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
+        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') 
         Error_Llk_Lp += np.sum(Error_re[:,i] > 5)
     plt.title('Llk Error Distribution in Outer Winding')
     plt.xlabel('Error(%)')
@@ -227,7 +231,7 @@ def main():
     print(f"Number of Llk errors greater than 5% in inner winding: {Error_Llk_Ls}")
     print(f"Number of Llk errors greater than 5% in outer winding: {Error_Llk_Lp}")
 
-    plt.show()
+    # plt.show()
 
 if __name__ == "__main__":
     main()
