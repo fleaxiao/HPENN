@@ -172,8 +172,10 @@ def main():
 
     yy_pred = 10**(y_pred.cpu().numpy()) # tensor is transferred to numpy
     yy_meas = 10**(y_meas.cpu().numpy())
-    yy_pred = (yy_pred - 1) / 1e4
-    yy_meas = (yy_meas - 1) / 1e6
+    yy_pred[:6, 0:] = (yy_pred[:6, 0:] - 1) / 1e4
+    yy_pred[6:, 0:] = (yy_pred[6:, 0:] - 1) / 1e6
+    yy_meas[:6, 0:] = (yy_meas[:6, 0:] - 1) / 1e4
+    yy_meas[6:, 0:] = (yy_meas[6:, 0:] - 1) / 1e6
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
