@@ -16,6 +16,8 @@ WEIGHT_DECAY = 1e-8
 DECAY_EPOCH = 30
 DECAY_RATIO = 0.95
 
+coef = 1
+
 # Neural Network Structure
 input_size = 13
 output_size = 24
@@ -52,22 +54,37 @@ def count_parameters(model):
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     inputs = df.iloc[:13, 0:].values
-    targets = df.iloc[13:, 0:].values
-    targets[:6, 0:] = targets[:6, 0:]*1e4+1
-    targets[6:, 0:] = targets[6:, 0:]*1e6+1
+    outputs = df.iloc[13:, 0:].values
+    outputs[:12, 0:] = outputs[:12, 0:]*coef
+    outputs[12:, 0:] = outputs[12:, 0:]*coef
+    print(outputs[outputs < 0])
+    outputs = np.where(outputs <= 0, 1e-10, outputs) 
+    outputs[outputs == 0] = 1
     weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
+
+    # log tranfer
+    inputs = np.log10(inputs)
+    outputs = np.log10(outputs)
+
+    # normalization
+    inputs_max = np.max(inputs, axis=1)
+    inputs_min = np.min(inputs, axis=1)
+    outputs_max = np.max(outputs, axis=1)
+    outputs_min = np.min(outputs, axis=1)
+    inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
+    outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
+
     inputs = inputs.T
-    targets = targets.T
+    outputs = outputs.T
     weight = weight.T
+    outputs_max = outputs_max.T
+    outputs_min = outputs_min.T
 
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
-    out_tensor = torch.tensor(targets, dtype=torch.float32)
+    output_tensor = torch.tensor(outputs, dtype=torch.float32)
     weight = torch.tensor(weight, dtype=torch.float32)
-
-    input_tensor = torch.log10(input_tensor)
-    out_tensor = torch.log10(out_tensor)
-    
-    return torch.utils.data.TensorDataset(input_tensor, out_tensor, weight)
+   
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor, weight), outputs_max, outputs_min
 
 # Config the model training
 def main():
@@ -88,11 +105,11 @@ def main():
         print("Now this program runs on cpu")
 
     # Load and spit dataset
-    dataset = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
+    dataset, outputs_max, outputs_min = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
     train_size = int(0.75 * len(dataset)) 
     valid_size = int(0.25 * len(dataset))
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
-    test_dataset = get_dataset('testset_1w_IW.csv')
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('testset_1w_IW.csv')
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
     else:
@@ -105,7 +122,7 @@ def main():
     net = Net().to(device)
 
     # Log the number of parameters
-    with open('logfile.txt','w') as f:
+    with open('logfile.txt','w', encoding='utf-8') as f:
         f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
@@ -145,7 +162,7 @@ def main():
                 f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
                 f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
                 f"Learning Rate {optimizer.param_groups[0]['lr']}")
-            with open('logfile.txt','a') as f:
+            with open('logfile.txt','a', encoding='utf-8') as f:
                 print(f"Epoch {epoch_i+1:2d} "
                 f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
                 f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
@@ -169,13 +186,17 @@ def main():
     y_meas = torch.cat(y_meas, dim=0)
     y_pred = torch.cat(y_pred, dim=0)
     print(f"Test Loss: {F.mse_loss(y_meas, y_pred).item() / len(test_dataset) * 1e5:.5f}")  # f denotes formatting string
+    
+    # tensor is transferred to numpy
+    yy_pred = y_pred.cpu().numpy()
+    yy_meas = y_meas.cpu().numpy()
+    print(np.size(test_outputs_max))
+    print(np.size(test_outputs_min))
+    yy_pred = yy_pred * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
+    yy_meas = yy_meas * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
 
-    yy_pred = 10**(y_pred.cpu().numpy()) # tensor is transferred to numpy
-    yy_meas = 10**(y_meas.cpu().numpy())
-    yy_pred[:6, 0:] = (yy_pred[:6, 0:] - 1) / 1e4
-    yy_pred[6:, 0:] = (yy_pred[6:, 0:] - 1) / 1e6
-    yy_meas[:6, 0:] = (yy_meas[:6, 0:] - 1) / 1e4
-    yy_meas[6:, 0:] = (yy_meas[6:, 0:] - 1) / 1e6
+    yy_pred = 10**yy_pred
+    yy_meas = 10**yy_meas
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
@@ -204,7 +225,7 @@ def main():
     #TODO Could change to "bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth)" when the erro is less than 10%
     plt.figure(figsize=(8, 5))
     for i in range (int(Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
+        plt.hist(Error_re[:,i], bins=np.arange(Error_re[:,i].min(), Error_re[:,i].max() + binwidth, binwidth), density=True, alpha=0.6, color=colors[i], edgecolor='black')
         Error_Rac_Ls += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Inner Winding')
     plt.xlabel('Error(%)')

@@ -48,8 +48,8 @@ def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     inputs = df.iloc[:13, 0:].values
     targets = df.iloc[13:, 0:].values
-    targets[:6, 0:] = targets[:6, 0:]*1e4+1
-    targets[6:, 0:] = targets[6:, 0:]*1e6+1
+    targets[12:, 0:] = targets[:12, 0:]*1e4+1
+    targets[12:, 0:] = targets[12:, 0:]*1e6+1
     weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
     inputs = inputs.T
     targets = targets.T
@@ -83,7 +83,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     net = Net().to(device)
-    net.load_state_dict(torch.load('Model_2D_IW.pth'))
+    net.load_state_dict(torch.load('model_params_IW.pth'), map_location=torch.device('cpu'))
     net.eval()  # 设置模型为评估模式
 
     # Evaluation
@@ -103,10 +103,10 @@ def main():
 
     yy_pred = 10**(y_pred.cpu().numpy()) # tensor is transferred to numpy
     yy_meas = 10**(y_meas.cpu().numpy())
-    yy_pred[:6, 0:] = (yy_pred[:6, 0:] - 1) / 1e4
-    yy_pred[6:, 0:] = (yy_pred[6:, 0:] - 1) / 1e6
-    yy_meas[:6, 0:] = (yy_meas[:6, 0:] - 1) / 1e4
-    yy_meas[6:, 0:] = (yy_meas[6:, 0:] - 1) / 1e6
+    yy_pred[:12, 0:] = (yy_pred[:12, 0:] - 1) / 1e6
+    yy_pred[12:, 0:] = (yy_pred[12:, 0:] - 1) / 1e6
+    yy_meas[:12, 0:] = (yy_meas[:12, 0:] - 1) / 1e6
+    yy_meas[12:, 0:] = (yy_meas[12:, 0:] - 1) / 1e6
   
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
