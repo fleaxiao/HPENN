@@ -26,7 +26,6 @@ hidden_layers = 3 #! 6
 
 # Define model structures and functions
 class Net(nn.Module):
-    
     def __init__(self):
         super(Net, self).__init__()
    
@@ -50,6 +49,16 @@ class Net(nn.Module):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
+class myLoss(nn.Module):
+    def __init__(self):
+        super(myLoss, self).__init__()
+
+    def forward(self, outputs, labels):
+        # loss = torch.sum((outputs[labels != 0] - labels[labels != 0])**2) / labels.numel()
+        loss = torch.mean((outputs[labels != 0] - labels[labels != 0])**2)
+        return loss
+
+
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
@@ -61,7 +70,6 @@ def get_dataset(adr):
     outputs[:12, 0:] = outputs[:12, 0:]*coef
     outputs = np.where(outputs <= 0, 1e-10, outputs) 
     outputs[outputs == 0] = 1
-    weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -78,15 +86,13 @@ def get_dataset(adr):
     # tensor transfer
     inputs = inputs.T
     outputs = outputs.T
-    weight = weight.T
     outputs_max = outputs_max.T
     outputs_min = outputs_min.T
 
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
     output_tensor = torch.tensor(outputs, dtype=torch.float32)
-    weight = torch.tensor(weight, dtype=torch.float32)
    
-    return torch.utils.data.TensorDataset(input_tensor, output_tensor, weight), outputs_max, outputs_min
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 # Config the model training
 def main():
@@ -119,7 +125,7 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
-
+    
     # Setup network
     net = Net().to(device)
 
@@ -128,8 +134,9 @@ def main():
         f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=WEIGHT_DECAY)
+    criterion = myLoss()
+    # criterion = nn.MSELgaoboss()
+    optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=WEIGHT_DECAY) 
     
     # Train the network
     for epoch_i in range(NUM_EPOCH):
@@ -138,26 +145,24 @@ def main():
         epoch_train_loss = 0
         net.train()
         optimizer.param_groups[0]['lr'] = LR_INI* (DECAY_RATIO ** (0+ epoch_i // DECAY_EPOCH))
-
-        for inputs, labels, batch_weights in train_loader:
+        
+        for inputs, labels in train_loader:
             optimizer.zero_grad()
             outputs = net(inputs.to(device))
             loss = criterion(outputs, labels.to(device))
-            weighted_loss = torch.mean(loss * batch_weights.to(device))
-            weighted_loss.backward()
+            loss.backward()
             optimizer.step()
 
-            epoch_train_loss += weighted_loss.item()
-
+            epoch_train_loss += loss.item()
+        
         # Compute Validation Loss
         with torch.no_grad():
             epoch_valid_loss = 0
-            for inputs, labels, batch_weights in valid_loader:
+            for inputs, labels in valid_loader:
                 outputs = net(inputs.to(device))
                 loss = criterion(outputs, labels.to(device))
-                weighted_loss = torch.mean(loss * batch_weights.to(device))
-
-                epoch_valid_loss += weighted_loss.item()
+                
+                epoch_valid_loss += loss.item()
 
         if (epoch_i+1)%100 == 0:
             print(f"Epoch {epoch_i+1:2d} "
@@ -180,7 +185,7 @@ def main():
     y_meas = []
     y_pred = []
     with torch.no_grad():
-        for inputs, labels, batch_weights in test_loader:
+        for inputs, labels in test_loader:
             y_pred.append(net(inputs.to(device)))
             y_meas.append(labels.to(device))
             x_meas.append(inputs)
@@ -200,12 +205,8 @@ def main():
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    for i in range(yy_meas.shape[0]):
-        for j in range(yy_meas.shape[1]):
-            if yy_meas[i, j] == 0:
-                Error_re[i, j] = 0
-            else:
-                Error_re[i, j] = abs(yy_pred[i, j] - yy_meas[i, j]) / abs(yy_meas[i, j]) * 100
+    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
+
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
@@ -218,7 +219,7 @@ def main():
     Error_Rac_Lp = 0
      
     colors = plt.cm.viridis(np.linspace(0, 1, Error_re.shape[1]))
-    binwidth = 1e2
+    bindwidth = 1e2
 
     #TODO Could change to "bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth)" when the erro is less than 10%
     plt.figure(figsize=(8, 5))
