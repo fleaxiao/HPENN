@@ -79,8 +79,8 @@ def objective(trial):
     # Hyperparameters
     NUM_EPOCH = 20 #! 2000
     BATCH_SIZE = 256
-    LR_INI = trial.suggest_float("LR_INI", 1e-4, 1e-2, log=True) #! 1e-4
-    WEIGHT_DECAY = trial.suggest_float("WEIGHT_DECAY", 1e-7, 1e-4, log=True) #! 1e-7
+    LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-2, log=True) #! 1e-4
+    WEIGHT_DECAY = trial.suggest_float("WEIGHT_DECAY", 1e-8, 1e-5, log=True) #! 1e-7
     DECAY_EPOCH = 100
     DECAY_RATIO = trial.suggest_float("DECAY_RATIO", 0.5, 0.95, log=True) #! 0.95
 
@@ -88,7 +88,7 @@ def objective(trial):
     input_size = 13
     output_size = 12
     hidden_size = trial.suggest_int("hidden_size", 200, 500, log=True) #! 300
-    hidden_layers = trial.suggest_int("hidden_layers", 3, 8, log=True) #! 6
+    hidden_layers = trial.suggest_int("hidden_layers", 3, 6, log=True) #! 4
 
     # Reproducibility
     random.seed(1)
@@ -100,11 +100,9 @@ def objective(trial):
     # Check whether GPU is available
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        print("Now this program runs on cuda")
     else:
         device = torch.device("cpu")
-        print("Now this program runs on cpu")
-
+        
     # Load and spit dataset
     dataset = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
     train_size = int(0.75 * len(dataset)) 
@@ -152,22 +150,22 @@ def objective(trial):
 
                 epoch_valid_loss += weighted_loss.item()
 
-    print(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}"
-    f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}"
-    f"LR_INI {LR_INI}"
-    f"WEIGHT_DECAY {WEIGHT_DECAY}"
-    f"DECAY_RATIO {DECAY_RATIO}"
-    f"hidden_size {hidden_size}"
-    f"hidden_layers {hidden_layers}")
+    # print(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
+    # f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
+    # f"LR_INI {LR_INI}   "
+    # f"WEIGHT_DECAY {WEIGHT_DECAY}   "
+    # f"DECAY_RATIO {DECAY_RATIO} "
+    # f"hidden_size {hidden_size} "
+    # f"hidden_layers {hidden_layers} ")
 
     # Log the number of parameters
-    with open('logfile.txt','a', encoding='utf-8') as f:
-        f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}\n"
-        f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}\n"
-        f"LR_INI {LR_INI}\n"
-        f"WEIGHT_DECAY {WEIGHT_DECAY}\n"
-        f"DECAY_RATIO {DECAY_RATIO}\n"
-        f"hidden_size {hidden_size}\n"
+    with open('optuna_logfile.txt','a', encoding='utf-8') as f:
+        f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
+        f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
+        f"LR_INI {LR_INI}   "
+        f"WEIGHT_DECAY {WEIGHT_DECAY}   "
+        f"DECAY_RATIO {DECAY_RATIO} "
+        f"hidden_size {hidden_size} "
         f"hidden_layers {hidden_layers}\n")
 
     return epoch_valid_loss / len(valid_dataset) * 1e5
@@ -175,11 +173,15 @@ def objective(trial):
 # Config the model training
 def main():
 
+    # clear output logfile
+    with open('optuna_logfile.txt','w', encoding='utf-8') as f:
+        pass
+
     # Create Optuna study object
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=2) #! 100
+    study.optimize(objective, n_trials=10) #! 100
 
     # 输出最佳超参数配置
     print("Best trial:")
@@ -187,7 +189,7 @@ def main():
     print("  Value: ", best_trial.value)
     print("  Params: ")
     for key, value in best_trial.params.items():
-        print(f"{key}: {value}")
+        print(f"        {key}: {value}")
 
 if __name__ == "__main__":
     main()
