@@ -9,7 +9,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 
 # Hyperparameters
-NUM_EPOCH = 200 #! 2000
+NUM_EPOCH = 20 #! 2000
 BATCH_SIZE = 256
 LR_INI = 1e-4
 WEIGHT_DECAY = 1e-7
@@ -82,6 +82,7 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1)
     inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
     outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
+    np.savetxt("dataset.csv", outputs, delimiter=',')
 
     # tensor transfer
     inputs = inputs.T
@@ -115,7 +116,7 @@ def main():
     # Load and spit dataset
     dataset, outputs_max, outputs_min = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
     train_size = int(0.75 * len(dataset)) 
-    valid_size = int(0.25 * len(dataset))
+    valid_size = len(dataset) - train_size
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
     test_dataset, test_outputs_max, test_outputs_min = get_dataset('testset_1w_IW.csv')
     if torch.cuda.is_available():
@@ -202,10 +203,11 @@ def main():
 
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
+    np.savetxt("yy_meas.csv", yy_meas, delimiter=',')
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    Error_re[yy_meas != 1] = abs(yy_pred[yy_meas != 1] - yy_meas[yy_meas != 1]) / abs(yy_meas[yy_meas != 1]) * 100
+    Error_re[yy_meas != 1e-10] = abs(yy_pred[yy_meas != 1e-10] - yy_meas[yy_meas != 1e-10]) / abs(yy_meas[yy_meas != 1e-10]) * 100
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))

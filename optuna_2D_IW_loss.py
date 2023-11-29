@@ -43,10 +43,9 @@ def get_dataset(adr):
     inputs = df.iloc[:13, 0:].values
     inputs[:2, 0:] = df.iloc[:2, 0:].values/10
     outputs = df.iloc[13:25, 0:].values
-    outputs[:12, 0:] = outputs[:12, 0:]
+    outputs[:12, 0:] = outputs[:12, 0:]*coef
     outputs = np.where(outputs <= 0, 1e-10, outputs) 
     outputs[outputs == 0] = 1
-    weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -59,19 +58,18 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1)
     inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
     outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
+    np.savetxt("dataset.csv", outputs, delimiter=',')
 
     # tensor transfer
     inputs = inputs.T
     outputs = outputs.T
-    weight = weight.T
     outputs_max = outputs_max.T
     outputs_min = outputs_min.T
 
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
     output_tensor = torch.tensor(outputs, dtype=torch.float32)
-    weight = torch.tensor(weight, dtype=torch.float32)
    
-    return torch.utils.data.TensorDataset(input_tensor, output_tensor, weight)
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 # Config the model training
 def objective(trial):
@@ -104,16 +102,18 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
+    dataset, outputs_max, outputs_min = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
     train_size = int(0.75 * len(dataset)) 
-    valid_size = int(0.25 * len(dataset))
+    valid_size = len(dataset)-train_size
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('testset_1w_IW.csv')
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
     else:
         kwargs = {'num_workers': 0, 'pin_memory': True}
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     # Setup network
     net = Net(input_size, output_size, hidden_size, hidden_layers).to(device)
@@ -183,7 +183,7 @@ def main():
     # Hyperparameter optimization
     study.optimize(objective, n_trials=10) #! 100
 
-    # 输出最佳超参数配置
+    # Output perfect results
     print("Best trial:")
     best_trial = study.best_trial
     print("  Value: ", best_trial.value)
