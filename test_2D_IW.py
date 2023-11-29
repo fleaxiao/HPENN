@@ -46,23 +46,37 @@ class Net(nn.Module):
 
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
+    
+    # preprocess
     inputs = df.iloc[:13, 0:].values
-    targets = df.iloc[13:, 0:].values
-    targets[12:, 0:] = targets[:12, 0:]*1e4+1
-    targets[12:, 0:] = targets[12:, 0:]*1e6+1
-    weight = np.ones(inputs.shape[1]) # Could be adjusted in the boundry condition
+    inputs[:2, 0:] = df.iloc[:2, 0:].values/10
+    outputs = df.iloc[13:25, 0:].values
+    outputs[:12, 0:] = outputs[:12, 0:]*coef
+    outputs = np.where(outputs <= 0, 1e-10, outputs) 
+    outputs[outputs == 0] = 1
+
+    # log tranfer
+    inputs = np.log10(inputs)
+    outputs = np.log10(outputs)
+
+    # normalization
+    inputs_max = np.max(inputs, axis=1)
+    inputs_min = np.min(inputs, axis=1)
+    outputs_max = np.max(outputs, axis=1)
+    outputs_min = np.min(outputs, axis=1)
+    inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
+    outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
+
+    # tensor transfer
     inputs = inputs.T
-    targets = targets.T
-    weight = weight.T
+    outputs = outputs.T
+    outputs_max = outputs_max.T
+    outputs_min = outputs_min.T
 
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
-    out_tensor = torch.tensor(targets, dtype=torch.float32)
-    weight = torch.tensor(weight, dtype=torch.float32)
-
-    input_tensor = torch.log10(input_tensor)
-    out_tensor = torch.log10(out_tensor)
-    
-    return torch.utils.data.TensorDataset(input_tensor, out_tensor, weight)
+    output_tensor = torch.tensor(outputs, dtype=torch.float32)
+   
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 def main():
 
@@ -75,7 +89,7 @@ def main():
         print("Now this program runs on cpu")
     
     # Load dataset and model
-    test_dataset = get_dataset('testset_1w_IW.csv')
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('testset_1w_IW.csv')
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
     else:
@@ -84,7 +98,7 @@ def main():
 
     net = Net().to(device)
     net.load_state_dict(torch.load('model_params_IW.pth'), map_location=torch.device('cpu'))
-    net.eval()  # 设置模型为评估模式
+    net.eval() 
 
     # Evaluation
     net.eval()
@@ -92,7 +106,7 @@ def main():
     y_meas = []
     y_pred = []
     with torch.no_grad():
-        for inputs, labels, batch_weights in test_loader:
+        for inputs, labels in test_loader:
             y_pred.append(net(inputs.to(device)))
             y_meas.append(labels.to(device))
             x_meas.append(inputs)
@@ -100,22 +114,20 @@ def main():
     y_meas = torch.cat(y_meas, dim=0)
     y_pred = torch.cat(y_pred, dim=0)
     print(f"Test Loss: {F.mse_loss(y_meas, y_pred).item() / len(test_dataset) * 1e5:.5f}")  # f denotes formatting string
+    
+    # tensor is transferred to numpy
+    yy_pred = y_pred.cpu().numpy()
+    yy_meas = y_meas.cpu().numpy()
+    yy_pred = yy_pred * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
+    yy_meas = yy_meas * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
 
-    yy_pred = 10**(y_pred.cpu().numpy()) # tensor is transferred to numpy
-    yy_meas = 10**(y_meas.cpu().numpy())
-    yy_pred[:12, 0:] = (yy_pred[:12, 0:] - 1) / 1e6
-    yy_pred[12:, 0:] = (yy_pred[12:, 0:] - 1) / 1e6
-    yy_meas[:12, 0:] = (yy_meas[:12, 0:] - 1) / 1e6
-    yy_meas[12:, 0:] = (yy_meas[12:, 0:] - 1) / 1e6
-  
+    yy_pred = 10**yy_pred
+    yy_meas = 10**yy_meas
+    
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    for i in range(yy_meas.shape[0]):
-        for j in range(yy_meas.shape[1]):
-            if yy_meas[i, j] == 0:
-                Error_re[i, j] = 0
-            else:
-                Error_re[i, j] = abs(yy_pred[i, j] - yy_meas[i, j]) / abs(yy_meas[i, j]) * 100
+    Error_re[yy_meas != 1] = abs(yy_pred[yy_meas != 1] - yy_meas[yy_meas != 1]) / abs(yy_meas[yy_meas != 1]) * 100
+
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
@@ -126,16 +138,14 @@ def main():
     # Visualization
     Error_Rac_Ls = 0
     Error_Rac_Lp = 0
-    Error_Llk_Ls = 0
-    Error_Llk_Lp = 0
-    
+     
     colors = plt.cm.viridis(np.linspace(0, 1, Error_re.shape[1]))
-    binwidth = 0.5
+    bindwidth = 1e2
 
     #TODO Could change to "bins=np.arange(0, Error_re[:,i].max() + binwidth, binwidth)" when the erro is less than 10%
     plt.figure(figsize=(8, 5))
-    for i in range (int(Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') # density = (number / total number) / interval width
+    for i in range (int(Error_re.shape[1]/2)):
+        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black')
         Error_Rac_Ls += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Inner Winding')
     plt.xlabel('Error(%)')
@@ -145,7 +155,7 @@ def main():
     plt.savefig('figs/Fig_Rac_Ls.png',dpi=600)
 
     plt.figure(figsize=(8, 5))
-    for i in range (int(Error_re.shape[1]/4), int(2*Error_re.shape[1]/4)):
+    for i in range (int(Error_re.shape[1]/2), int(Error_re.shape[1])):
         plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
         Error_Rac_Lp += np.sum(Error_re[:,i] > 5)
     plt.title('Rac Error Distribution in Outer Winding')
@@ -155,32 +165,8 @@ def main():
     plt.grid()
     plt.savefig('figs/Fig_Rac_Lp.png',dpi=600)
 
-    plt.figure(figsize=(8, 5))
-    for i in range (int(2*Error_re.shape[1]/4), int(3*Error_re.shape[1]/4)):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
-        Error_Llk_Ls += np.sum(Error_re[:,i] > 5)
-    plt.title('Llk Error Distribution in Inner Winding')
-    plt.xlabel('Error(%)')
-    plt.ylabel('Distribution')
-    plt.legend(labels=['outer_layer_1','outer_layer_2','outer_layer_3','outer_layer_4','outer_layer_5','outer_layer_6'])
-    plt.grid()
-    plt.savefig('figs/Fig_Llk_Ls.png',dpi=600)
-        
-    plt.figure(figsize=(8, 5))
-    for i in range (int(3*Error_re.shape[1]/4), int(Error_re.shape[1])):
-        plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
-        Error_Llk_Lp += np.sum(Error_re[:,i] > 5)
-    plt.title('Llk Error Distribution in Outer Winding')
-    plt.xlabel('Error(%)')
-    plt.ylabel('Distribution')
-    plt.legend(labels=['outer_layer_1','outer_layer_2','outer_layer_3','outer_layer_4','outer_layer_5','outer_layer_6'])
-    plt.grid()
-    plt.savefig('figs/Fig_Llk_Lp.png',dpi=600)
-
     print(f"Number of Rac errors greater than 5% in inner winding: {Error_Rac_Ls}")
     print(f"Number of Rac errors greater than 5% in outer winding: {Error_Rac_Lp}")
-    print(f"Number of Llk errors greater than 5% in inner winding: {Error_Llk_Ls}")
-    print(f"Number of Llk errors greater than 5% in outer winding: {Error_Llk_Lp}")
 
     # plt.show()
 

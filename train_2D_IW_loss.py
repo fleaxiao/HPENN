@@ -135,7 +135,7 @@ def main():
 
     # Setup optimizer
     criterion = myLoss()
-    # criterion = nn.MSELgaoboss()
+    # criterion = nn.MSELoss()
     optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=WEIGHT_DECAY) 
     
     # Train the network
@@ -205,7 +205,7 @@ def main():
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
+    Error_re[yy_meas != 1] = abs(yy_pred[yy_meas != 1] - yy_meas[yy_meas != 1]) / abs(yy_meas[yy_meas != 1]) * 100
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
