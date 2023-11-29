@@ -51,7 +51,7 @@ def get_dataset(adr):
     inputs = df.iloc[:13, 0:].values
     inputs[:2, 0:] = df.iloc[:2, 0:].values/10
     outputs = df.iloc[13:25, 0:].values
-    outputs[:12, 0:] = outputs[:12, 0:]*coef
+    outputs[:12, 0:] = outputs[:12, 0:]
     outputs = np.where(outputs <= 0, 1e-10, outputs) 
     outputs[outputs == 0] = 1
 
