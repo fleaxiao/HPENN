@@ -5,9 +5,7 @@ import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-import matplotlib.pyplot as plt
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -38,14 +36,15 @@ def count_parameters(model):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
+    data_length = 15_000
+
+    # pre-process
+    inputs = df.iloc[:13, 0:data_length].values
+    inputs[:2, 0:] = inputs[:2, 0:]/10
     
-    # preprocess
-    inputs = df.iloc[:13, 0:].values
-    inputs[:2, 0:] = df.iloc[:2, 0:].values/10
-    outputs = df.iloc[13:25, 0:].values
-    outputs[:12, 0:] = outputs[:12, 0:]*coef
-    outputs = np.where(outputs <= 0, 1e-10, outputs) 
-    outputs[outputs == 0] = 1
+    outputs = df.iloc[13:25, 0:data_length].values
+    outputs = outputs[0:1, :] # only train the first loss output
+    outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) 
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -58,7 +57,6 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1)
     inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
     outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
-    np.savetxt("dataset.csv", outputs, delimiter=',')
 
     # tensor transfer
     inputs = inputs.T
@@ -75,18 +73,17 @@ def get_dataset(adr):
 def objective(trial):
 
     # Hyperparameters
-    NUM_EPOCH = 20 #! 2000
-    BATCH_SIZE = 256
+    NUM_EPOCH = 5 #! 800
+    BATCH_SIZE = trial.suggest_categorical("BATCH_SIZE", [128, 256])
     LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-2, log=True) #! 1e-4
-    WEIGHT_DECAY = trial.suggest_float("WEIGHT_DECAY", 1e-8, 1e-5, log=True) #! 1e-7
     DECAY_EPOCH = 100
-    DECAY_RATIO = trial.suggest_float("DECAY_RATIO", 0.5, 0.95, log=True) #! 0.95
+    DECAY_RATIO = 0.5
 
     # Neural Network Structure
     input_size = 13
-    output_size = 12
-    hidden_size = trial.suggest_int("hidden_size", 200, 500, log=True) #! 300
-    hidden_layers = trial.suggest_int("hidden_layers", 3, 6, log=True) #! 4
+    output_size = 1
+    hidden_size = trial.suggest_int("hidden_size", 10, 100, log=True) #! 300
+    hidden_layers = 3 #! 4
 
     # Reproducibility
     random.seed(1)
@@ -102,7 +99,7 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, outputs_max, outputs_min = get_dataset('testset_1w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
+    dataset, _ , _ = get_dataset('trainset_10w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
     train_size = int(0.75 * len(dataset)) 
     valid_size = len(dataset)-train_size
     train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
@@ -120,53 +117,81 @@ def objective(trial):
 
     # Setup optimizer
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR_INI, weight_decay=WEIGHT_DECAY)
+    optimizer = optim.Adam(net.parameters(), lr=LR_INI)
     
-    # Train the network
+     # Train the network
     for epoch_i in range(NUM_EPOCH):
 
         # Train for one epoch
         epoch_train_loss = 0
         net.train()
         optimizer.param_groups[0]['lr'] = LR_INI* (DECAY_RATIO ** (0+ epoch_i // DECAY_EPOCH))
-
-        for inputs, labels, batch_weights in train_loader:
+        
+        for inputs, labels in train_loader:
             optimizer.zero_grad()
             outputs = net(inputs.to(device))
             loss = criterion(outputs, labels.to(device))
-            weighted_loss = torch.mean(loss * batch_weights.to(device))
-            weighted_loss.backward()
+            loss.backward()
             optimizer.step()
 
-            epoch_train_loss += weighted_loss.item()
-
+            epoch_train_loss += loss.item()
+        
         # Compute Validation Loss
         with torch.no_grad():
             epoch_valid_loss = 0
-            for inputs, labels, batch_weights in valid_loader:
+            for inputs, labels in valid_loader:
                 outputs = net(inputs.to(device))
                 loss = criterion(outputs, labels.to(device))
-                weighted_loss = torch.mean(loss * batch_weights.to(device))
-
-                epoch_valid_loss += weighted_loss.item()
-
-    # print(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
-    # f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
-    # f"LR_INI {LR_INI}   "
-    # f"WEIGHT_DECAY {WEIGHT_DECAY}   "
-    # f"DECAY_RATIO {DECAY_RATIO} "
-    # f"hidden_size {hidden_size} "
-    # f"hidden_layers {hidden_layers} ")
+                
+                epoch_valid_loss += loss.item()
 
     # Log the number of parameters
     with open('optuna_logfile.txt','a', encoding='utf-8') as f:
         f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
         f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
-        f"LR_INI {LR_INI}   "
-        f"WEIGHT_DECAY {WEIGHT_DECAY}   "
-        f"DECAY_RATIO {DECAY_RATIO} "
-        f"hidden_size {hidden_size} "
-        f"hidden_layers {hidden_layers}\n")
+        f"LR_INI {LR_INI:.5f}   "
+        f"BATCH_SIZE {BATCH_SIZE} "
+        f"hidden_size {hidden_size}\n")
+
+    # Evaluation
+    net.eval()
+    x_meas = []
+    y_meas = []
+    y_pred = []
+    with torch.no_grad():
+        for inputs, labels in test_loader:
+            y_pred.append(net(inputs.to(device)))
+            y_meas.append(labels.to(device))
+            x_meas.append(inputs)
+
+    y_meas = torch.cat(y_meas, dim=0)
+    y_pred = torch.cat(y_pred, dim=0)
+        
+    # tensor is transferred to numpy
+    yy_pred = y_pred.cpu().numpy()
+    yy_meas = y_meas.cpu().numpy()
+    yy_pred = yy_pred * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
+    yy_meas = yy_meas * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
+
+    yy_pred = 10**yy_pred
+    yy_meas = 10**yy_meas
+       
+    # Relative Error
+    Error_re = np.zeros_like(yy_meas)
+    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
+
+    Error_re_avg = np.mean(Error_re)
+    Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
+    Error_re_max = np.max(Error_re)
+
+    with open('optuna_logfile.txt','a', encoding='utf-8') as f:
+        f.write(f"Relative Error: {Error_re_avg:.5f}%   "
+        f"RMS Error: {Error_re_rms:.5f}%    "
+        f"MAX Error: {Error_re_max:.5f}% \n")
+    
+    # print(f"Relative Error: {Error_re_avg:.8f}%")
+    # print(f"RMS Error: {Error_re_rms:.8f}%")
+    # print(f"MAX Error: {Error_re_max:.8f}%")
 
     return epoch_valid_loss / len(valid_dataset) * 1e5
 
@@ -174,14 +199,14 @@ def objective(trial):
 def main():
 
     # clear output logfile
-    with open('optuna_logfile.txt','w', encoding='utf-8') as f:
+    with open('optuna_logfile.txt','w', encoding='utf-8') as _:
         pass
 
     # Create Optuna study object
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=10) #! 100
+    study.optimize(objective, n_trials=50) #! 100
 
     # Output perfect results
     print("Best trial:")
