@@ -36,15 +36,21 @@ def count_parameters(model):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    data_length = 15_000
+    data_length = 1_000
 
     # pre-process
     inputs = df.iloc[:13, 0:data_length].values
-    inputs[:2, 0:] = inputs[:2, 0:]/10
+    inputs[:2] = inputs[:2]/10
+    heigth_windows = np.maximum(inputs[2]+inputs[11], inputs[3]+inputs[12])
+    inputs = inputs[:-2]
+    inputs = np.vstack([inputs, heigth_windows])
+    # np.savetxt("inputs.csv", inputs, delimiter=',')
     
     outputs = df.iloc[13:25, 0:data_length].values
-    outputs = outputs[0:1, :] # only train the first loss output
-    outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) 
+    # outputs = outputs[0:1] # train specific layer
+    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the loss of a whole section
+    # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) 
+    # np.savetxt("outputs.csv", outputs, delimiter=',')
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -73,14 +79,14 @@ def get_dataset(adr):
 def objective(trial):
 
     # Hyperparameters
-    NUM_EPOCH = 5 #! 800
+    NUM_EPOCH = 10 #! 800
     BATCH_SIZE = trial.suggest_categorical("BATCH_SIZE", [128, 256])
     LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-2, log=True) #! 1e-4
     DECAY_EPOCH = 100
     DECAY_RATIO = 0.5
 
     # Neural Network Structure
-    input_size = 13
+    input_size = 12
     output_size = 1
     hidden_size = trial.suggest_int("hidden_size", 10, 100, log=True) #! 300
     hidden_layers = 3 #! 4
@@ -150,7 +156,7 @@ def objective(trial):
         f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
         f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
         f"LR_INI {LR_INI:.5f}   "
-        f"BATCH_SIZE {BATCH_SIZE} "
+        f"BATCH_SIZE {BATCH_SIZE}   "
         f"hidden_size {hidden_size}\n")
 
     # Evaluation
@@ -186,7 +192,7 @@ def objective(trial):
 
     with open('optuna_logfile.txt','a', encoding='utf-8') as f:
         f.write(f"Relative Error: {Error_re_avg:.5f}%   "
-        f"RMS Error: {Error_re_rms:.5f}%    "
+        f"RMS Error: {Error_re_rms:.5f}%   "
         f"MAX Error: {Error_re_max:.5f}% \n")
     
     # print(f"Relative Error: {Error_re_avg:.8f}%")
@@ -206,7 +212,7 @@ def main():
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=50) #! 100
+    study.optimize(objective, n_trials=30) #! 100
 
     # Output perfect results
     print("Best trial:")
