@@ -36,33 +36,37 @@ def count_parameters(model):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    data_length = 1_000
-
+    train_layer = 6 #! adjusted in each trainning
+    cols_to_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
+    df = df.drop(columns=cols_to_drop)
+    # df.to_csv("processed data.csv", index=False, header=False)
+    data_length = 1_000 #! 50_000
+   
     # pre-process
-    inputs = df.iloc[:13, 0:data_length].values
+    inputs = df.iloc[:10, 0:data_length].values
     inputs[:2] = inputs[:2]/10
-    heigth_windows = np.maximum(inputs[2]+inputs[11], inputs[3]+inputs[12])
-    inputs = inputs[:-2]
-    inputs = np.vstack([inputs, heigth_windows])
-    # np.savetxt("inputs.csv", inputs, delimiter=',')
+    # heigth_windows = np.maximum(inputs[2]+inputs[11], inputs[3]+inputs[12]) #calculate the height of window
+    # inputs = inputs[:-2]
+    # inputs = np.vstack([inputs, heigth_windows])
     
-    outputs = df.iloc[13:25, 0:data_length].values
-    # outputs = outputs[0:1] # train specific layer
-    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the loss of a whole section
+    outputs = df.iloc[10:22, 0:data_length].values
+    outputs = outputs[train_layer-1:train_layer] # train specific layer
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the loss of a whole section
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) 
-    # np.savetxt("outputs.csv", outputs, delimiter=',')
 
     # log tranfer
     inputs = np.log10(inputs)
     outputs = np.log10(outputs)
 
     # normalization
-    inputs_max = np.max(inputs, axis=1)
-    inputs_min = np.min(inputs, axis=1)
-    outputs_max = np.max(outputs, axis=1)
-    outputs_min = np.min(outputs, axis=1)
-    inputs = (inputs - inputs_min[:, np.newaxis]) / (inputs_max - inputs_min)[:, np.newaxis]
-    outputs = (outputs - outputs_min[:, np.newaxis]) / (outputs_max - outputs_min)[:, np.newaxis]
+    inputs_max = np.max(inputs, axis=1, keepdims=True)
+    inputs_min = np.min(inputs, axis=1, keepdims=True)
+    outputs_max = np.max(outputs, axis=1, keepdims=True)
+    outputs_min = np.min(outputs, axis=1, keepdims=True)
+    diff = inputs_max - inputs_min
+    diff[diff == 0] = 1
+    inputs = np.where(diff == 1, 1, inputs - inputs_min / diff)
+    outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
     inputs = inputs.T
@@ -79,17 +83,17 @@ def get_dataset(adr):
 def objective(trial):
 
     # Hyperparameters
-    NUM_EPOCH = 10 #! 800
+    NUM_EPOCH = 10 #! 600
     BATCH_SIZE = trial.suggest_categorical("BATCH_SIZE", [128, 256])
     LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-2, log=True) #! 1e-4
     DECAY_EPOCH = 100
     DECAY_RATIO = 0.5
 
     # Neural Network Structure
-    input_size = 12
+    input_size = 10
     output_size = 1
     hidden_size = trial.suggest_int("hidden_size", 10, 100, log=True) #! 300
-    hidden_layers = 3 #! 4
+    hidden_layers = 3
 
     # Reproducibility
     random.seed(1)
@@ -105,11 +109,11 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, _ , _ = get_dataset('trainset_10w_IW.csv') #! Change to 10w datasheet when placed in Snellius 
-    train_size = int(0.75 * len(dataset)) 
-    valid_size = len(dataset)-train_size
-    train_dataset, valid_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size])
-    test_dataset, test_outputs_max, test_outputs_min = get_dataset('testset_1w_IW.csv')
+    dataset, test_outputs_max , test_outputs_min = get_dataset('trainset_5w_IW.csv') #! Change to 10w or 5w datasheet when placed in Snellius 
+    train_size = int(0.6 * len(dataset)) 
+    valid_size = int(0.2 * len(dataset))
+    test_size  = len(dataset) - train_size - valid_size
+    train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size, test_size])
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
     else:
@@ -176,8 +180,8 @@ def objective(trial):
     # tensor is transferred to numpy
     yy_pred = y_pred.cpu().numpy()
     yy_meas = y_meas.cpu().numpy()
-    yy_pred = yy_pred * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
-    yy_meas = yy_meas * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
+    yy_pred = yy_pred * (test_outputs_max - test_outputs_min) + test_outputs_min
+    yy_meas = yy_meas * (test_outputs_max - test_outputs_min) + test_outputs_min
 
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
