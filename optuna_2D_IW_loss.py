@@ -37,22 +37,20 @@ def count_parameters(model):
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     train_layer = 6 #! adjusted in each trainning
-    cols_to_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
-    df = df.drop(columns=cols_to_drop)
+    cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
+    df = df.drop(columns=cols_drop)
     # df.to_csv("processed data.csv", index=False, header=False)
-    data_length = 1_000 #! 50_000
+    data_length = 50_000 #! 50_000
    
     # pre-process
     inputs = df.iloc[:10, 0:data_length].values
     inputs[:2] = inputs[:2]/10
-    # heigth_windows = np.maximum(inputs[2]+inputs[11], inputs[3]+inputs[12]) #calculate the height of window
-    # inputs = inputs[:-2]
-    # inputs = np.vstack([inputs, heigth_windows])
     
-    outputs = df.iloc[10:22, 0:data_length].values
-    outputs = outputs[train_layer-1:train_layer] # train specific layer
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the loss of a whole section
-    # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) 
+    outputs = df.iloc[10:, 0:data_length].values
+    # outputs = outputs[train_layer-1:train_layer] # train specific layer
+    outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
+    # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section   
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -83,7 +81,7 @@ def get_dataset(adr):
 def objective(trial):
 
     # Hyperparameters
-    NUM_EPOCH = 10 #! 600
+    NUM_EPOCH = 600 #! 600
     BATCH_SIZE = trial.suggest_categorical("BATCH_SIZE", [128, 256])
     LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-2, log=True) #! 1e-4
     DECAY_EPOCH = 100
@@ -91,9 +89,9 @@ def objective(trial):
 
     # Neural Network Structure
     input_size = 10
-    output_size = 1
-    hidden_size = trial.suggest_int("hidden_size", 10, 100, log=True) #! 300
-    hidden_layers = 3
+    output_size = 2
+    hidden_size = trial.suggest_int("hidden_size", 80, 130, log=True) #! 300
+    hidden_layers = 4
 
     # Reproducibility
     random.seed(1)
@@ -109,7 +107,7 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('trainset_5w_IW.csv') #! Change to 10w or 5w datasheet when placed in Snellius 
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_IW_5w_2.0.csv')
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -156,7 +154,7 @@ def objective(trial):
                 epoch_valid_loss += loss.item()
 
     # Log the number of parameters
-    with open('optuna_logfile.txt','a', encoding='utf-8') as f:
+    with open('optuna_logfile_6.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
         f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
         f"LR_INI {LR_INI:.5f}   "
@@ -188,13 +186,13 @@ def objective(trial):
        
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
+    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100 #! change to "!=1" when train mutiple layers 
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
 
-    with open('optuna_logfile.txt','a', encoding='utf-8') as f:
+    with open('optuna_logfile_6.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Relative Error: {Error_re_avg:.5f}%   "
         f"RMS Error: {Error_re_rms:.5f}%   "
         f"MAX Error: {Error_re_max:.5f}% \n")
@@ -209,14 +207,14 @@ def objective(trial):
 def main():
 
     # clear output logfile
-    with open('optuna_logfile.txt','w', encoding='utf-8') as _:
+    with open('optuna_logfile_6.txt','w', encoding='utf-8') as _: #! adjusted in each trainning
         pass
 
     # Create Optuna study object
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=30) #! 100
+    study.optimize(objective, n_trials=20) #! 100
 
     # Output perfect results
     print("Best trial:")

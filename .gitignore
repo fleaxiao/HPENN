@@ -3,3 +3,5 @@
 *.pth
 
 figs/*
+dataset/*
+logfile/*
