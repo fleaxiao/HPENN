@@ -50,7 +50,8 @@ def get_dataset(adr):
     # outputs = outputs[train_layer-1:train_layer] # train specific layer
     outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section   
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section
+    np.savetxt("output.csv",outputs,delimiter=",")
 
     # log tranfer
     inputs = np.log10(inputs)
