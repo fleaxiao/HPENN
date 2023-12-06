@@ -4,4 +4,5 @@
 
 figs/*
 dataset/*
-logfile/*
+logfile_IW/*
+results_IW/*
