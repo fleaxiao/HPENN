@@ -36,7 +36,7 @@ def count_parameters(model):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    train_layer = 8 #! adjusted in each trainning
+    train_layer = 7 #! adjusted in each trainning
     cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
     df = df.drop(columns=cols_drop)
     # df.to_csv("processed data.csv", index=False, header=False)
@@ -50,9 +50,12 @@ def get_dataset(adr):
     # outputs = outputs[train_layer-1:train_layer] # train specific layer
     outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section
-    np.savetxt("output.csv",outputs,delimiter=",")
-
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section   
+    o_min = np.min(outputs, axis=1).reshape(-1,1)
+    for i in range(2):
+        if o_min[i] < 0:
+            outputs[i] = outputs[i] - 2*o_min[i][:,np.newaxis]
+    
     # log tranfer
     inputs = np.log10(inputs)
     outputs = np.log10(outputs)
@@ -76,22 +79,22 @@ def get_dataset(adr):
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
     output_tensor = torch.tensor(outputs, dtype=torch.float32)
    
-    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min, o_min
 
 # Config the model training
 def objective(trial):
 
     # Hyperparameters
     NUM_EPOCH = 1 #! 600
-    BATCH_SIZE = trial.suggest_categorical("BATCH_SIZE", [128, 256])
-    LR_INI = trial.suggest_float("LR_INI", 1e-5, 1e-3, log=True) #! 1e-4
+    BATCH_SIZE = 128
+    LR_INI = trial.suggest_float("LR_INI", 7e-4, 9e-4, log=True) #! 1e-4
     DECAY_EPOCH = 100
     DECAY_RATIO = 0.5
 
     # Neural Network Structure
     input_size = 10
     output_size = 2
-    hidden_size = trial.suggest_int("hidden_size", 100, 160, log=True) #! 300
+    hidden_size = trial.suggest_int("hidden_size", 120, 130, log=True) #! 300
     hidden_layers = 4
 
     # Reproducibility
@@ -108,7 +111,7 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_2.0.csv')
+    dataset, test_outputs_max , test_outputs_min, o_min = get_dataset('dataset/trainset_OW_5w_2.0.csv')
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -155,7 +158,7 @@ def objective(trial):
                 epoch_valid_loss += loss.item()
 
     # Log the number of parameters
-    with open('optuna_OW_8.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open('optuna_OW_7.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
         f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
         f"LR_INI {LR_INI}   "
@@ -184,6 +187,11 @@ def objective(trial):
 
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
+
+    for i in range(2):
+        if o_min[i] < 0:
+            yy_pred[i] = yy_pred[i] + 2*o_min[i][:,np.newaxis]
+            yy_meas[i] = yy_meas[i] + 2*o_min[i][:,np.newaxis]
        
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
@@ -193,7 +201,7 @@ def objective(trial):
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
 
-    with open('optuna_OW_8.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open('optuna_OW_7.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Relative Error: {Error_re_avg:.5f}%   "
         f"RMS Error: {Error_re_rms:.5f}%   "
         f"MAX Error: {Error_re_max:.5f}% \n")
@@ -208,7 +216,7 @@ def objective(trial):
 def main():
 
     # clear output logfile
-    with open('optuna_OW_8.txt','w', encoding='utf-8') as _: #! adjusted in each trainning
+    with open('optuna_OW_7.txt','w', encoding='utf-8') as _: #! adjusted in each trainning
         pass
 
     # Create Optuna study object

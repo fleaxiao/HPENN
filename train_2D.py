@@ -59,7 +59,7 @@ class myLoss(nn.Module):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    train_layer = 9 #! adjusted in each trainning
+    train_layer = 5 #! adjusted in each trainning
     cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
     df = df.drop(columns=cols_drop)
     # df.to_csv("processed data.csv", index=False, header=False)
@@ -73,8 +73,8 @@ def get_dataset(adr):
     # outputs = outputs[train_layer-1:train_layer] # train specific layer
     outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section
-    print(np.min(outputs, axis=1))
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section   
+    outputs = 1 - outputs
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -137,7 +137,7 @@ def main():
     net = Net().to(device)
 
     # Log the number of parameters
-    with open('train_OW_6.txt','w', encoding='utf-8') as f: #! adjusted in each trainning
+    with open('train_OW_5.txt','w', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
@@ -183,7 +183,7 @@ def main():
                 f"Learning Rate {optimizer.param_groups[0]['lr']}",file=f)
 
     # Save the model parameters
-    torch.save(net.state_dict(), "Model_2D_OW_6.pth") #! adjusted in each trainning
+    torch.save(net.state_dict(), "Model_2D_OW_5.pth") #! adjusted in each trainning
     print("Training finished! Model is saved!")
 
     # Evaluation
@@ -207,8 +207,8 @@ def main():
     yy_pred = yy_pred * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
     yy_meas = yy_meas * (test_outputs_max - test_outputs_min)[np.newaxis,:] + test_outputs_min[np.newaxis,:]
 
-    yy_pred = 10**yy_pred
-    yy_meas = 10**yy_meas
+    yy_pred = 1 - 10**yy_pred
+    yy_meas = 1 - 10**yy_meas
     
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
@@ -223,46 +223,12 @@ def main():
     print(f"MAX Error: {Error_re_max:.8f}%")
 
     # Log the error and logfile
-    with open('train_OW_6.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open('train_OW_5.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
         f.write(f"Relative Error: {Error_re_avg:.8f}%   "
         f"RMS Error: {Error_re_rms:.8f}%   "
         f"MAX Error: {Error_re_max:.8f}%\n")
     
-    np.savetxt('train_error_OW_6.csv', Error_re, delimiter=',') #! adjusted in each trainning
-   
-    # # Visualization
-    # Error_Rac_Ls = 0
-    # Error_Rac_Lp = 0
-     
-    # colors = plt.cm.viridis(np.linspace(0, 1, Error_re.shape[1]))
-    # bindwidth = 1e2
-
-    # plt.figure(figsize=(8, 5))
-    # for i in range (int(Error_re.shape[1]/2)):
-    #     plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black')
-    #     Error_Rac_Ls += np.sum(Error_re[:,i] > 5)
-    # plt.title('Rac Error Distribution in Inner Winding')
-    # plt.xlabel('Error(%)')
-    # plt.ylabel('Distribution')
-    # plt.legend(labels=['inner_layer_1','inner_layer_2','inner_layer_3','inner_layer_4','inner_layer_5','inner_layer_6'])
-    # plt.grid()
-    # plt.savefig('figs/Fig_Rac_Ls.png',dpi=600)
-
-    # plt.figure(figsize=(8, 5))
-    # for i in range (int(Error_re.shape[1]/2), int(Error_re.shape[1])):
-    #     plt.hist(Error_re[:,i], bins=20, density=True, alpha=0.6, color=colors[i], edgecolor='black') 
-    #     Error_Rac_Lp += np.sum(Error_re[:,i] > 5)
-    # plt.title('Rac Error Distribution in Outer Winding')
-    # plt.xlabel('Error(%)')
-    # plt.ylabel('Distribution')
-    # plt.legend(labels=['outer_layer_1','outer_layer_2','outer_layer_3','outer_layer_4','outer_layer_5','outer_layer_6'])
-    # plt.grid()
-    # plt.savefig('figs/Fig_Rac_Lp.png',dpi=600)
-
-    # print(f"Number of Rac errors greater than 5% in inner winding: {Error_Rac_Ls}")
-    # print(f"Number of Rac errors greater than 5% in outer winding: {Error_Rac_Lp}")
-
-    # plt.show()
+    np.savetxt('train_error_OW_5.csv', Error_re, delimiter=',') #! adjusted in each trainning
 
 if __name__ == "__main__":
     main()
