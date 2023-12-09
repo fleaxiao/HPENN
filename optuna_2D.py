@@ -7,6 +7,9 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
+train_layer = 1 #! adjusted in each trainning
+FILE_NAME = f"optuna_OW_{train_layer}.txt" 
+
 # Define model structures and functions
 class Net(nn.Module):
     
@@ -29,32 +32,26 @@ class Net(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    train_layer = 7 #! adjusted in each trainning
     cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
     df = df.drop(columns=cols_drop)
     # df.to_csv("processed data.csv", index=False, header=False)
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values
+    inputs = df.iloc[:8, 0:data_length].values #! 8 when OW, 10 when IW
     inputs[:2] = inputs[:2]/10
     
-    outputs = df.iloc[10:, 0:data_length].values
-    # outputs = outputs[train_layer-1:train_layer] # train specific layer
-    outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
+    outputs = df.iloc[10:, 0:data_length].values # 10 when train power loss 
+    outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
+    # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section   
-    o_min = np.min(outputs, axis=1).reshape(-1,1)
-    for i in range(2):
-        if o_min[i] < 0:
-            outputs[i] = outputs[i] - 2*o_min[i][:,np.newaxis]
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
     
     # log tranfer
     inputs = np.log10(inputs)
@@ -79,22 +76,22 @@ def get_dataset(adr):
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
     output_tensor = torch.tensor(outputs, dtype=torch.float32)
    
-    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min, o_min
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 # Config the model training
 def objective(trial):
 
     # Hyperparameters
-    NUM_EPOCH = 1 #! 600
-    BATCH_SIZE = 128
-    LR_INI = trial.suggest_float("LR_INI", 7e-4, 9e-4, log=True) #! 1e-4
+    NUM_EPOCH = 600 #! 600
+    BATCH_SIZE = 128 # trial.suggest_categorical('batch size',[128, 256])
+    LR_INI = trial.suggest_float("LR_INI", 5e-4, 9e-4, log=True) 
     DECAY_EPOCH = 100
     DECAY_RATIO = 0.5
 
     # Neural Network Structure
-    input_size = 10
-    output_size = 2
-    hidden_size = trial.suggest_int("hidden_size", 120, 130, log=True) #! 300
+    input_size = 8 #! 8 when OW, 10 when IW
+    output_size = 1
+    hidden_size = trial.suggest_int("hidden_size", 120, 150, log=True)
     hidden_layers = 4
 
     # Reproducibility
@@ -111,7 +108,7 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min, o_min = get_dataset('dataset/trainset_OW_5w_2.0.csv')
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_3.0.csv')
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -158,7 +155,7 @@ def objective(trial):
                 epoch_valid_loss += loss.item()
 
     # Log the number of parameters
-    with open('optuna_OW_7.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open(FILE_NAME, 'a', encoding='utf-8') as f: 
         f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
         f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
         f"LR_INI {LR_INI}   "
@@ -182,33 +179,25 @@ def objective(trial):
     # tensor is transferred to numpy
     yy_pred = y_pred.cpu().numpy()
     yy_meas = y_meas.cpu().numpy()
+
     yy_pred = yy_pred * (test_outputs_max - test_outputs_min) + test_outputs_min
     yy_meas = yy_meas * (test_outputs_max - test_outputs_min) + test_outputs_min
 
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
-
-    for i in range(2):
-        if o_min[i] < 0:
-            yy_pred[i] = yy_pred[i] + 2*o_min[i][:,np.newaxis]
-            yy_meas[i] = yy_meas[i] + 2*o_min[i][:,np.newaxis]
        
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
-    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100 #! change to "!=1" when train mutiple layers 
+    Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
 
-    with open('optuna_OW_7.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open(FILE_NAME ,'a', encoding='utf-8') as f:
         f.write(f"Relative Error: {Error_re_avg:.5f}%   "
         f"RMS Error: {Error_re_rms:.5f}%   "
         f"MAX Error: {Error_re_max:.5f}% \n")
-    
-    # print(f"Relative Error: {Error_re_avg:.8f}%")
-    # print(f"RMS Error: {Error_re_rms:.8f}%")
-    # print(f"MAX Error: {Error_re_max:.8f}%")
 
     return epoch_valid_loss / len(valid_dataset) * 1e5
 
@@ -216,14 +205,14 @@ def objective(trial):
 def main():
 
     # clear output logfile
-    with open('optuna_OW_7.txt','w', encoding='utf-8') as _: #! adjusted in each trainning
+    with open(FILE_NAME ,'w', encoding='utf-8') as _:
         pass
 
     # Create Optuna study object
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=20)
+    study.optimize(objective, n_trials=12)
 
     # Output perfect results
     print("Best trial:")

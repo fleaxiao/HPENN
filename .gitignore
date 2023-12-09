@@ -4,5 +4,8 @@
 
 figs/*
 dataset/*
+experiment_2outputs/*
 logfile_IW/*
 results_IW/*
+logfile_OW/*
+results_OW/*
