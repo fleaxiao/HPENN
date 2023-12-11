@@ -8,6 +8,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 import matplotlib.pyplot as plt
 
+train_layer = 1 #! adjusted in each trainning
+LOG_FILE = f"train_OW_{train_layer}.txt"
+MODEL_FILE = f"Model_2D_OW_{train_layer}.pth"
+ERROR_FILE = f"train_error_OW_{train_layer}.csv"
+
 # Hyperparameters
 NUM_EPOCH = 1 #! 1200
 BATCH_SIZE = 128 #! adjusted in each trainning
@@ -62,29 +67,22 @@ class myLoss(nn.Module):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    train_layer = 7 #! adjusted in each trainning
-    cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
-    df = df.drop(columns=cols_drop)
+    # cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
+    # df = df.drop(columns=cols_drop)
     # df.to_csv("processed data.csv", index=False, header=False)
-    data_length = 50_000 #! 50_000
+    data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values
+    inputs = df.iloc[:8, 0:data_length].values #! 8 when OW, 10 when IW
     inputs[:2] = inputs[:2]/10
     
-    outputs = df.iloc[10:, 0:data_length].values
-    # outputs = outputs[train_layer-1:train_layer] # train specific layer
-    outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
+    outputs = df.iloc[28:, 0:data_length].values # 10 when train power loss, 22 when train inductance
+    # outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
+    # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total loss of a whole section  
-    o_min = np.min(abs(outputs), axis=1).reshape(-1,1)
-    print(o_min)
-    o_min = np.min(outputs, axis=1).reshape(-1,1)
-    print(o_min)
-    for i in range(2):
-        if o_min[i] < 0:
-            outputs[i] = outputs[i] - 2*o_min[i]
-
+    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
+    print(np.min(outputs))
+    
     # log tranfer
     inputs = np.log10(inputs)
     outputs = np.log10(outputs)
@@ -108,7 +106,7 @@ def get_dataset(adr):
     input_tensor = torch.tensor(inputs, dtype=torch.float32)
     output_tensor = torch.tensor(outputs, dtype=torch.float32)
    
-    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min, o_min
+    return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 # Config the model training
 def main():
@@ -129,7 +127,7 @@ def main():
         print("Now this program runs on cpu")
 
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min, o_min = get_dataset('dataset/trainset_OW_5w_3.0.csv')
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_4.0.csv')
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -146,7 +144,7 @@ def main():
     net = Net().to(device)
 
     # Log the number of parameters
-    with open('train_OW_7.txt','w', encoding='utf-8') as f: #! adjusted in each trainning
+    with open(LOG_FILE,'w', encoding='utf-8') as f:
         f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
@@ -192,7 +190,7 @@ def main():
                 f"Learning Rate {optimizer.param_groups[0]['lr']}",file=f)
 
     # Save the model parameters
-    torch.save(net.state_dict(), "Model_2D_OW_7.pth") #! adjusted in each trainning
+    torch.save(net.state_dict(), MODEL_FILE) 
     print("Training finished! Model is saved!")
 
     # Evaluation
@@ -220,11 +218,6 @@ def main():
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
 
-    for i in range(2):
-        if o_min[i] < 0:
-            yy_pred[:,i] = yy_pred[:,i] + 2*o_min[i]
-            yy_meas[:,i] = yy_meas[:,i] + 2*o_min[i]
-
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
     Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
@@ -238,12 +231,12 @@ def main():
     print(f"MAX Error: {Error_re_max:.8f}%")
 
     # Log the error and logfile
-    with open('train_OW_7.txt','a', encoding='utf-8') as f: #! adjusted in each trainning
+    with open(LOG_FILE,'a', encoding='utf-8') as f:
         f.write(f"Relative Error: {Error_re_avg:.8f}%   "
         f"RMS Error: {Error_re_rms:.8f}%   "
         f"MAX Error: {Error_re_max:.8f}%\n")
     
-    np.savetxt('train_error_OW_7.csv', Error_re, delimiter=',') #! adjusted in each trainning
+    np.savetxt(ERROR_FILE, Error_re, delimiter=',') 
    
 if __name__ == "__main__":
     main()
