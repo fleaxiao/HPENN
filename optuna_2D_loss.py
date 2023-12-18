@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-train_layer = 1 #! adjusted in each trainning
-FILE_NAME = f"optuna_OW_{train_layer}.txt" 
+train_layer = 12 #! adjusted in each trainning
+FILE_NAME = f"optuna_IW_loss_{train_layer}.txt" #! IW OW
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -44,7 +44,7 @@ def get_dataset(adr):
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:8, 0:data_length].values #! 8 when OW, 10 when IW
+    inputs = df.iloc[:10, 0:data_length].values #! IW -> 10, OW -> 8
     inputs[:2] = inputs[:2]/10
     
     outputs = df.iloc[10:, 0:data_length].values # 10 when train power loss 
@@ -64,7 +64,7 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1, keepdims=True)
     diff = inputs_max - inputs_min
     diff[diff == 0] = 1
-    inputs = np.where(diff == 1, 1, inputs - inputs_min / diff)
+    inputs = np.where(diff == 1, 1, (inputs - inputs_min) / diff)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -83,15 +83,15 @@ def objective(trial):
 
     # Hyperparameters
     NUM_EPOCH = 600 #! 600
-    BATCH_SIZE = 128 # trial.suggest_categorical('batch size',[128, 256])
-    LR_INI = trial.suggest_float("LR_INI", 5e-4, 9e-4, log=True) 
+    BATCH_SIZE = 32 # trial.suggest_categorical('batch size',[128, 256])
+    LR_INI = trial.suggest_float("LR_INI", 4.5e-4, 7.5e-4, log=True) 
     DECAY_EPOCH = 100
     DECAY_RATIO = 0.5
 
     # Neural Network Structure
-    input_size = 8 #! 8 when OW, 10 when IW
+    input_size = 10 #! IW -> 10, OW -> 8
     output_size = 1
-    hidden_size = trial.suggest_int("hidden_size", 120, 150, log=True)
+    hidden_size = trial.suggest_int("hidden_size", 100, 150, log=True)
     hidden_layers = 4
 
     # Reproducibility
@@ -108,7 +108,7 @@ def objective(trial):
         device = torch.device("cpu")
         
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_3.0.csv')
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_IW_5w_4.0.csv') #! adjusted in each trainning
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -212,7 +212,7 @@ def main():
     study = optuna.create_study(direction="minimize")
 
     # Hyperparameter optimization
-    study.optimize(objective, n_trials=12)
+    study.optimize(objective, n_trials=15)
 
     # Output perfect results
     print("Best trial:")

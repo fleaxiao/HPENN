@@ -1,34 +1,19 @@
 # Import necessary packages
+import optuna
 import random
 import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torch.optim as optim
-import matplotlib.pyplot as plt
 
-train_layer = 1 #! adjusted in each trainning
-LOG_FILE = f"train_OW_{train_layer}.txt"
-MODEL_FILE = f"Model_2D_OW_{train_layer}.pth"
-ERROR_FILE = f"train_error_OW_{train_layer}.csv"
-
-# Hyperparameters
-NUM_EPOCH = 1 #! 1200
-BATCH_SIZE = 128 #! adjusted in each trainning
-LR_INI = 0.0002732553180846675    #! adjusted in each trainning
-DECAY_EPOCH = 100
-DECAY_RATIO = 0.5
-
-# Neural Network Structure
-input_size = 10
-output_size = 2
-hidden_size = 123 #! adjusted in each trainning
-hidden_layers = 4 
+train_layer = 'inside' #! adjusted in each trainning
+FILE_NAME = f"optuna_OW_inductor_{train_layer}.txt" #! IW OW
 
 # Define model structures and functions
 class Net(nn.Module):
-    def __init__(self):
+    
+    def __init__(self, input_size, output_size, hidden_size, hidden_layers):
         super(Net, self).__init__()
    
         # Input layer
@@ -47,41 +32,25 @@ class Net(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-class myLoss(nn.Module):
-    def __init__(self):
-        super(myLoss, self).__init__()
-
-    def forward(self, outputs, labels):
-        # loss = torch.sum((outputs[labels != 0] - labels[labels != 0])**2) / labels.numel()
-        # loss = torch.mean((outputs[labels != 0] - labels[labels != 0])**2)
-        rms_loss = torch.sqrt(torch.mean((outputs - labels) ** 2))
-        max_loss, _ = torch.max(torch.abs(outputs - labels), dim=0)
-        loss = rms_loss + max_loss
-        return loss
-
 
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     # cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
     # df = df.drop(columns=cols_drop)
-    # df.to_csv("processed data.csv", index=False, header=False)
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:8, 0:data_length].values #! 8 when OW, 10 when IW
+    inputs = df.iloc[:8, 0:data_length].values #! IW -> 10, OW -> 8
     inputs[:2] = inputs[:2]/10
     
-    outputs = df.iloc[28:, 0:data_length].values # 10 when train power loss, 22 when train inductance
+    outputs = df.iloc[22:28, 0:data_length].values #! power loss -> 10, inductor -> 22 / 28
     # outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
     # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
     outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
-    print(np.min(outputs))
     
     # log tranfer
     inputs = np.log10(inputs)
@@ -94,7 +63,7 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1, keepdims=True)
     diff = inputs_max - inputs_min
     diff[diff == 0] = 1
-    inputs = np.where(diff == 1, 1, inputs - inputs_min / diff)
+    inputs = np.where(diff == 1, 1, (inputs - inputs_min) / diff)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -109,7 +78,20 @@ def get_dataset(adr):
     return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
 # Config the model training
-def main():
+def objective(trial):
+
+    # Hyperparameters
+    NUM_EPOCH = 600 #! 600
+    BATCH_SIZE = 32 # trial.suggest_categorical('batch size',[128, 256])
+    LR_INI = trial.suggest_float("LR_INI", 4.5e-4, 7.5e-4, log=True) 
+    DECAY_EPOCH = 100
+    DECAY_RATIO = 0.5
+
+    # Neural Network Structure
+    input_size = 8 #! IW -> 10, OW -> 8
+    output_size = 1
+    hidden_size = trial.suggest_int("hidden_size", 90, 120, log=True)
+    hidden_layers = 4
 
     # Reproducibility
     random.seed(1)
@@ -121,13 +103,11 @@ def main():
     # Check whether GPU is available
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        print("Now this program runs on cuda")
     else:
         device = torch.device("cpu")
-        print("Now this program runs on cpu")
-
+        
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_4.0.csv')
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_4.0.csv') #! adjusted in each trainning
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -139,20 +119,15 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
-    
-    # Setup network
-    net = Net().to(device)
 
-    # Log the number of parameters
-    with open(LOG_FILE,'w', encoding='utf-8') as f:
-        f.write(f"Number of parameters: {count_parameters(net)}\n")
+    # Setup network
+    net = Net(input_size, output_size, hidden_size, hidden_layers).to(device)
 
     # Setup optimizer
-    # criterion = myLoss()
     criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR_INI) 
+    optimizer = optim.Adam(net.parameters(), lr=LR_INI)
     
-    # Train the network
+     # Train the network
     for epoch_i in range(NUM_EPOCH):
 
         # Train for one epoch
@@ -178,20 +153,13 @@ def main():
                 
                 epoch_valid_loss += loss.item()
 
-        if (epoch_i+1)%100 == 0:
-            print(f"Epoch {epoch_i+1:2d} "
-                f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
-                f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
-                f"Learning Rate {optimizer.param_groups[0]['lr']}")
-            with open('logfile.txt','a', encoding='utf-8') as f:
-                print(f"Epoch {epoch_i+1:2d} "
-                f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
-                f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
-                f"Learning Rate {optimizer.param_groups[0]['lr']}",file=f)
-
-    # Save the model parameters
-    torch.save(net.state_dict(), MODEL_FILE) 
-    print("Training finished! Model is saved!")
+    # Log the number of parameters
+    with open(FILE_NAME, 'a', encoding='utf-8') as f: 
+        f.write(f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f}   "
+        f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f}   "
+        f"LR_INI {LR_INI}   "
+        f"BATCH_SIZE {BATCH_SIZE}   "
+        f"hidden_size {hidden_size}\n")
 
     # Evaluation
     net.eval()
@@ -206,8 +174,7 @@ def main():
 
     y_meas = torch.cat(y_meas, dim=0)
     y_pred = torch.cat(y_pred, dim=0)
-    print(f"Test Loss: {F.mse_loss(y_meas, y_pred).item() / len(test_dataset) * 1e5:.5f}")  # f denotes formatting string
-    
+        
     # tensor is transferred to numpy
     yy_pred = y_pred.cpu().numpy()
     yy_meas = y_meas.cpu().numpy()
@@ -217,26 +184,42 @@ def main():
 
     yy_pred = 10**yy_pred
     yy_meas = 10**yy_meas
-
+       
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
     Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
-    # Error_re = np.squeeze(Error_re, axis=0)
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
     Error_re_max = np.max(Error_re)
-    print(f"Relative Error: {Error_re_avg:.8f}%")
-    print(f"RMS Error: {Error_re_rms:.8f}%")
-    print(f"MAX Error: {Error_re_max:.8f}%")
 
-    # Log the error and logfile
-    with open(LOG_FILE,'a', encoding='utf-8') as f:
-        f.write(f"Relative Error: {Error_re_avg:.8f}%   "
-        f"RMS Error: {Error_re_rms:.8f}%   "
-        f"MAX Error: {Error_re_max:.8f}%\n")
-    
-    np.savetxt(ERROR_FILE, Error_re, delimiter=',') 
-   
+    with open(FILE_NAME ,'a', encoding='utf-8') as f:
+        f.write(f"Relative Error: {Error_re_avg:.5f}%   "
+        f"RMS Error: {Error_re_rms:.5f}%   "
+        f"MAX Error: {Error_re_max:.5f}% \n")
+
+    return epoch_valid_loss / len(valid_dataset) * 1e5
+
+# Config the model training
+def main():
+
+    # clear output logfile
+    with open(FILE_NAME ,'w', encoding='utf-8') as _:
+        pass
+
+    # Create Optuna study object
+    study = optuna.create_study(direction="minimize")
+
+    # Hyperparameter optimization
+    study.optimize(objective, n_trials=10)
+
+    # Output perfect results
+    print("Best trial:")
+    best_trial = study.best_trial
+    print("  Value: ", best_trial.value)
+    print("  Params: ")
+    for key, value in best_trial.params.items():
+        print(f"        {key}: {value}")
+
 if __name__ == "__main__":
     main()
