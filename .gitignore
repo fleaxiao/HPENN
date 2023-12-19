@@ -6,7 +6,5 @@ figs/*
 dataset_2D/*
 dataset_3D/*
 experiment_2outputs/*
-logfile_IW/*
-results_IW/*
-logfile_OW/*
-results_OW/*
+results_inductor/*
+results_loss/*

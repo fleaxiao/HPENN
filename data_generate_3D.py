@@ -155,25 +155,25 @@ def main():
     input_size = 10
     hidden_size_sequence = [100, 100, 100, 134, 127, 117]
     model_IW_Ls = load_model(input_size, hidden_size_sequence, device)
-    model_IW_Ls.load_state_dict(torch.load('Model_2D_IW_Ls.pth', map_location = torch.device('cpu')))
+    model_IW_Ls.load_state_dict(torch.load('results_loss/Model_2D_IW_Ls.pth', map_location = torch.device('cpu')))
 
     # IW Lp Load model
     input_size = 10
     hidden_size_sequence = [100, 143, 134, 143, 140, 143]
     model_IW_Lp = load_model(input_size, hidden_size_sequence, device)
-    model_IW_Lp.load_state_dict(torch.load('Model_2D_IW_Lp.pth', map_location = torch.device('cpu')))
+    model_IW_Lp.load_state_dict(torch.load('results_loss/Model_2D_IW_Lp.pth', map_location = torch.device('cpu')))
  
     # OW Ls Load model
     input_size = 8
     hidden_size_sequence = [100, 100, 100, 100, 128, 139]
     model_OW_Ls = load_model(input_size, hidden_size_sequence, device)
-    model_OW_Ls.load_state_dict(torch.load('Model_2D_OW_Ls.pth', map_location = torch.device('cpu')))
+    model_OW_Ls.load_state_dict(torch.load('results_loss/Model_2D_OW_Ls.pth', map_location = torch.device('cpu')))
 
     # OW Lp Load model
     input_size = 8
     hidden_size_sequence = [81, 109, 123, 81, 81, 125]
     model_OW_Lp = load_model(input_size, hidden_size_sequence, device)
-    model_OW_Lp.load_state_dict(torch.load('Model_2D_OW_Lp.pth', map_location = torch.device('cpu')))
+    model_OW_Lp.load_state_dict(torch.load('results_loss/Model_2D_OW_Lp.pth', map_location = torch.device('cpu')))
 
     # # Evaluation
     # net.eval()
