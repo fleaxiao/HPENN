@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import matplotlib.pyplot as plt
 
 train_layer = 'outside' #! adjusted in each trainning
 LOG_FILE = f"train_OW_{train_layer}.txt"

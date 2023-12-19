@@ -6,7 +6,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import matplotlib.pyplot as plt
 
 train_layer = 12 #! adjusted in each trainning
 LOG_FILE = f"train_IW_{train_layer}.txt"

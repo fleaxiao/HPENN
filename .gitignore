@@ -3,7 +3,8 @@
 *.pth
 
 figs/*
-dataset/*
+dataset_2D/*
+dataset_3D/*
 experiment_2outputs/*
 logfile_IW/*
 results_IW/*
