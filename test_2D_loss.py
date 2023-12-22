@@ -1,32 +1,29 @@
 # Import necessary packages
-import random
 import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-
-train_layer = 1 #! adjusted in each trainning
-LOG_FILE = f"train_IW_{train_layer}.txt"
-MODEL_FILE = f"Model_2D_IW_{train_layer}.pth"
-ERROR_FILE = f"train_error_IW_{train_layer}.csv"
 
 # Hyperparameters
-NUM_EPOCH = 1 #! 1000
-BATCH_SIZE = 32
-LR_INI = 0.0006758499286351658
-DECAY_EPOCH = 100
-DECAY_RATIO = 0.5
+NUM_EPOCH = 1000
+BATCH_SIZE = 64
+LR_INI = 1e-4
+WEIGHT_DECAY = 1e-8
+DECAY_EPOCH = 30
+DECAY_RATIO = 0.95
 
 # Neural Network Structure
-input_size = 10 #! IW -> 10, OW -> 8
+input_size = 8 #! IW -> 10, OW -> 8
 output_size = 1
-hidden_size = 143
-hidden_layers = 4 
+hidden_size = 123
+hidden_layers = 4
+
+train_layer = 9
 
 # Define model structures and functions
 class Net(nn.Module):
+    
     def __init__(self):
         super(Net, self).__init__()
    
@@ -46,24 +43,6 @@ class Net(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-class myLoss(nn.Module):
-    def __init__(self):
-        super(myLoss, self).__init__()
-
-    def forward(self, outputs, labels):
-        # loss = torch.sum((outputs[labels != 0] - labels[labels != 0])**2) / labels.numel()
-        # loss = torch.mean((outputs[labels != 0] - labels[labels != 0])**2)
-        rms_loss = torch.sqrt(torch.mean((outputs - labels) ** 2))
-        max_loss, _ = torch.max(torch.abs(outputs - labels), dim=0)
-        loss = rms_loss + max_loss
-        return loss
-
-
-# Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
@@ -71,7 +50,7 @@ def get_dataset(adr):
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values #! IW -> 10, OW -> 8
+    inputs = df.iloc[:8, 0:data_length].values #! IW -> 10, OW -> 8
     inputs[:2] = inputs[:2]/10
     
     outputs = df.iloc[10:, 0:data_length].values
@@ -93,11 +72,13 @@ def get_dataset(adr):
     inputs[5] = (inputs[5] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
     inputs[6] = (inputs[6] - np.log10(0.04)) / (np.log10(0.1) - np.log10(0.04))
     inputs[7] = (inputs[7] - np.log10(0.01)) / (np.log10(0.05) - np.log10(0.01))
-    inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
-    inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
+    # inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
+    # inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
 
-    outputs_max = np.array([-3.2]) # np.max(outputs, axis=1, keepdims=True)
-    outputs_min = np.array([-4.6]) # np.min(outputs, axis=1, keepdims=True)
+    outputs_max = np.array([-3.2])
+    outputs_min = np.array([-4.6]) 
+    # outputs_max = np.max(outputs, axis=1, keepdims=True)
+    # outputs_min = np.min(outputs, axis=1, keepdims=True)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -111,15 +92,7 @@ def get_dataset(adr):
    
     return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
-# Config the model training
 def main():
-
-    # Reproducibility
-    random.seed(1)
-    np.random.seed(1)
-    torch.manual_seed(1)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
 
     # Check whether GPU is available
     if torch.cuda.is_available():
@@ -128,75 +101,20 @@ def main():
     else:
         device = torch.device("cpu")
         print("Now this program runs on cpu")
+    
+    # Load dataset and model
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_2D/trainset_OW_5w_4.0.csv')
 
-    # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/trainset_IW_5w_4.0.csv') #! adjusted in each trainning
-    train_size = int(0.6 * len(dataset)) 
-    valid_size = int(0.2 * len(dataset))
-    test_size  = len(dataset) - train_size - valid_size
-    train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size, test_size])
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
     else:
         kwargs = {'num_workers': 0, 'pin_memory': True}
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=BATCH_SIZE, shuffle=True, **kwargs)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
-    
-    # Setup network
+
     net = Net().to(device)
+    net.load_state_dict(torch.load('results_loss/results_OW/Model_2D_OW_9.pth', map_location = torch.device('cpu')))
 
-    # Log the number of parameters
-    with open(LOG_FILE,'w', encoding='utf-8') as f:
-        f.write(f"Number of parameters: {count_parameters(net)}\n")
-
-    # Setup optimizer
-    # criterion = myLoss()
-    criterion = nn.MSELoss()
-    optimizer = optim.Adam(net.parameters(), lr=LR_INI) 
-    
-    # Train the network
-    for epoch_i in range(NUM_EPOCH):
-
-        # Train for one epoch
-        epoch_train_loss = 0
-        net.train()
-        optimizer.param_groups[0]['lr'] = LR_INI* (DECAY_RATIO ** (0+ epoch_i // DECAY_EPOCH))
-        
-        for inputs, labels in train_loader:
-            optimizer.zero_grad()
-            outputs = net(inputs.to(device))
-            loss = criterion(outputs, labels.to(device))
-            loss.backward()
-            optimizer.step()
-
-            epoch_train_loss += loss.item()
-        
-        # Compute Validation Loss
-        with torch.no_grad():
-            epoch_valid_loss = 0
-            for inputs, labels in valid_loader:
-                outputs = net(inputs.to(device))
-                loss = criterion(outputs, labels.to(device))
-                
-                epoch_valid_loss += loss.item()
-
-        if (epoch_i+1)%100 == 0:
-            print(f"Epoch {epoch_i+1:2d} "
-                f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
-                f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
-                f"Learning Rate {optimizer.param_groups[0]['lr']}")
-            with open('logfile.txt','a', encoding='utf-8') as f:
-                print(f"Epoch {epoch_i+1:2d} "
-                f"Train {epoch_train_loss / len(train_dataset) * 1e5:.5f} "
-                f"Valid {epoch_valid_loss / len(valid_dataset) * 1e5:.5f} "
-                f"Learning Rate {optimizer.param_groups[0]['lr']}",file=f)
-
-    # Save the model parameters
-    torch.save(net.state_dict(), MODEL_FILE) 
-    print("Training finished! Model is saved!")
-
-    # Evaluation
+  # Evaluation
     net.eval()
     x_meas = []
     y_meas = []
@@ -206,7 +124,7 @@ def main():
             y_pred.append(net(inputs.to(device)))
             y_meas.append(labels.to(device))
             x_meas.append(inputs)
-
+    
     y_meas = torch.cat(y_meas, dim=0)
     y_pred = torch.cat(y_pred, dim=0)
     print(f"Test Loss: {F.mse_loss(y_meas, y_pred).item() / len(test_dataset) * 1e5:.5f}")  # f denotes formatting string
@@ -232,14 +150,6 @@ def main():
     print(f"Relative Error: {Error_re_avg:.8f}%")
     print(f"RMS Error: {Error_re_rms:.8f}%")
     print(f"MAX Error: {Error_re_max:.8f}%")
-
-    # Log the error and logfile
-    with open(LOG_FILE,'a', encoding='utf-8') as f:
-        f.write(f"Relative Error: {Error_re_avg:.8f}%   "
-        f"RMS Error: {Error_re_rms:.8f}%   "
-        f"MAX Error: {Error_re_max:.8f}%\n")
-    
-    np.savetxt(ERROR_FILE, Error_re, delimiter=',') 
    
 if __name__ == "__main__":
     main()

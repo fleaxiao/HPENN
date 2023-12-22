@@ -7,19 +7,19 @@ import torch.nn.functional as F
 
 # Hyperparameters
 NUM_EPOCH = 1000
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 LR_INI = 1e-4
 WEIGHT_DECAY = 1e-8
 DECAY_EPOCH = 30
 DECAY_RATIO = 0.95
 
 # Neural Network Structure
-input_size = 10
+input_size = 8 #! IW -> 10, OW -> 8
 output_size = 1
-hidden_size = 143
+hidden_size = 107
 hidden_layers = 4
 
-train_layer = 12
+train_layer = 1
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -45,32 +45,40 @@ class Net(nn.Module):
 
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
-    df = df.drop(columns=cols_drop)
+    # cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
+    # df = df.drop(columns=cols_drop)
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values #! IW -> 10, OW -> 8
+    inputs = df.iloc[:8, 0:data_length].values #! IW -> 10, OW -> 8
     inputs[:2] = inputs[:2]/10
     
-    outputs = df.iloc[10:, 0:data_length].values
-    outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
+    outputs = df.iloc[22:28, 0:data_length].values #! power loss -> 10, inductor -> 22 / 28
+    # outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
     # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
-    
+    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
+    print(np.min(outputs))
     # log tranfer
     inputs = np.log10(inputs)
     outputs = np.log10(outputs)
 
     # normalization
-    inputs_max = np.max(inputs, axis=1, keepdims=True)
-    inputs_min = np.min(inputs, axis=1, keepdims=True)
+    inputs[0] = (inputs[0] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
+    inputs[1] = (inputs[1] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
+    inputs[2] = (inputs[2] - np.log10(0.1)) / (np.log10(0.6) - np.log10(0.1))
+    inputs[3] = (inputs[3] - np.log10(0.055)) / (np.log10(0.6) - np.log10(0.055))
+    inputs[4] = (inputs[4] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
+    inputs[5] = (inputs[5] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
+    inputs[6] = (inputs[6] - np.log10(0.04)) / (np.log10(0.1) - np.log10(0.04))
+    inputs[7] = (inputs[7] - np.log10(0.01)) / (np.log10(0.05) - np.log10(0.01))
+    # inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
+    # inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
+
+    # outputs_max = np.array([-3.2])
+    # outputs_min = np.array([-4.6]) 
     outputs_max = np.max(outputs, axis=1, keepdims=True)
     outputs_min = np.min(outputs, axis=1, keepdims=True)
-    diff = inputs_max - inputs_min
-    diff[diff == 0] = 1
-    inputs = np.where(diff == 1, 1, (inputs - inputs_min) / diff)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -96,8 +104,6 @@ def main():
     
     # Load dataset and model
     test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_2D/trainset_OW_5w_4.0.csv')
-    print(test_outputs_max)
-    print(test_outputs_min)
 
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
@@ -106,7 +112,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     net = Net().to(device)
-    net.load_state_dict(torch.load('results_IW/Model_2D_IW_10.pth', map_location = torch.device('cpu')))
+    net.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
 
   # Evaluation
     net.eval()
@@ -118,7 +124,7 @@ def main():
             y_pred.append(net(inputs.to(device)))
             y_meas.append(labels.to(device))
             x_meas.append(inputs)
-
+    
     y_meas = torch.cat(y_meas, dim=0)
     y_pred = torch.cat(y_pred, dim=0)
     print(f"Test Loss: {F.mse_loss(y_meas, y_pred).item() / len(test_dataset) * 1e5:.5f}")  # f denotes formatting string

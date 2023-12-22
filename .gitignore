@@ -5,6 +5,6 @@
 figs/*
 dataset_2D/*
 dataset_3D/*
-experiment_2outputs/*
+experiment/*
 results_inductor/*
 results_loss/*
