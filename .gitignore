@@ -5,6 +5,8 @@
 figs/*
 dataset_2D/*
 dataset_3D/*
+dataset_coef/*
 experiment/*
 results_inductor/*
 results_loss/*
+results_coef/*
