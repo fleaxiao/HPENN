@@ -9,7 +9,7 @@ import torch.optim as optim
 
 LOG_FILE = "results_coef/train_3D_loss.txt"
 MODEL_FILE = "results_coef/Model_3D_loss.pth"
-ERROR_FILE = "results_coef/train_3D_error.csv"
+ERROR_FILE = "results_coef/train_3D_error_loss.csv"
 
 # Hyperparameters
 NUM_EPOCH = 500 #! 1000

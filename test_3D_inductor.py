@@ -77,21 +77,21 @@ def get_dataset(adr):
    
     return torch.utils.data.TensorDataset(input_tensor, output_tensor), outputs_max, outputs_min
 
-def get_data_loss(adr):
+def get_data_inductor(adr):
     df = pd.read_csv(adr, header=None)
     data_length = 1000
 
-    loss = df.iloc[13:14, 0:data_length].values
-    section_loss_IW_Ls = df.iloc[14:15, 0:data_length].values
-    section_loss_IW_Lp = df.iloc[15:16, 0:data_length].values
-    section_loss_OW_Ls = df.iloc[16:17, 0:data_length].values
-    section_loss_OW_Lp = df.iloc[17:18, 0:data_length].values
-    corner_loss_IW_Ls = df.iloc[18:19, 0:data_length].values
-    corner_loss_IW_Lp = df.iloc[19:20, 0:data_length].values
-    corner_loss_OW_Ls = df.iloc[20:21, 0:data_length].values
-    corner_loss_OW_Lp = df.iloc[21:22, 0:data_length].values
+    inductance = df.iloc[13:14, 0:data_length].values
+    section_inductor_IW_Ls = df.iloc[14:15, 0:data_length].values
+    section_inductor_IW_Lp = df.iloc[15:16, 0:data_length].values
+    section_inductor_OW_Ls = df.iloc[16:17, 0:data_length].values
+    section_inductor_OW_Lp = df.iloc[17:18, 0:data_length].values
+    corner_inductor_IW_Ls = df.iloc[18:19, 0:data_length].values
+    corner_inductor_IW_Lp = df.iloc[19:20, 0:data_length].values
+    corner_inductor_OW_Ls = df.iloc[20:21, 0:data_length].values
+    corner_inductor_OW_Lp = df.iloc[21:22, 0:data_length].values
 
-    return loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp
+    return inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp
 
 def main():
 
@@ -104,8 +104,8 @@ def main():
         print("Now this program runs on cpu")
     
     # Load dataset and model
-    test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_coef/dataset_3D_loss.csv')
-    loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp = get_data_loss('dataset_coef/dataset_3D_loss.csv')
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_coef/dataset_3D_inductor.csv')
+    inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp = get_data_inductor('dataset_coef/dataset_3D_inductor.csv')
 
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
@@ -114,7 +114,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     net = Net().to(device)
-    net.load_state_dict(torch.load('results_coef/Model_3D_loss.pth', map_location = torch.device('cpu')))
+    net.load_state_dict(torch.load('results_coef/Model_3D_inductor.pth', map_location = torch.device('cpu')))
 
   # Evaluation
     net.eval()
@@ -152,11 +152,11 @@ def main():
     print(f"RMS Error: {Error_re_rms:.8f}%")
     print(f"MAX Error: {Error_re_max:.8f}%")
 
-    loss_pred = yy_pred *((corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2) + (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)*2
-    Error_loss = abs(loss_pred - loss) / abs(loss) * 100
-    Error_loss_max = np.max(Error_loss)
+    inductor_pred = 2*(yy_pred *((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2) + (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2)
+    Error_inductor = abs(inductor_pred - inductance) / abs(inductance) * 100
+    Error_inductor_max = np.max(Error_inductor)
 
-    print(f"Loss Max Error: {Error_loss_max:.8f}%")
+    print(f"Inductor Max Error: {Error_inductor_max:.8f}%")
    
 if __name__ == "__main__":
     main()

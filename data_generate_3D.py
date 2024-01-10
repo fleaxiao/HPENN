@@ -330,8 +330,11 @@ def main():
     print(f"inductor min corf: {np.min(coef_inductor)}")
 
     # Save data
-    save_data = np.vstack([inputs.T, loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp, coef_loss])
-    np.savetxt("dataset_coef/dataset_3D_loss.csv", save_data, delimiter=',')
+    save_data_loss = np.vstack([inputs.T, loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp, coef_loss])
+    np.savetxt("dataset_coef/dataset_3D_loss.csv", save_data_loss, delimiter=',')
+
+    save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp, coef_inductor])
+    np.savetxt("dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
 
 if __name__ == "__main__":
     main()

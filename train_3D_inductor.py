@@ -7,23 +7,22 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-train_layer = 'outside' #! adjusted in each trainning
-LOG_FILE = f"train_OW_{train_layer}.txt"
-MODEL_FILE = f"Model_2D_OW_{train_layer}.pth"
-ERROR_FILE = f"train_error_OW_{train_layer}.csv"
+LOG_FILE = "results_coef/train_3D_inductor.txt"
+MODEL_FILE = "results_coef/Model_3D_inductor.pth"
+ERROR_FILE = "results_coef/train_3D_error_inductor.csv"
 
 # Hyperparameters
-NUM_EPOCH = 800 #! 1000
-BATCH_SIZE = 32
-LR_INI = 0.0004932685185631416
+NUM_EPOCH = 500 #! 1000
+BATCH_SIZE = 4
+LR_INI = 0.0006758499286351658
 DECAY_EPOCH = 100
 DECAY_RATIO = 0.5
 
 # Neural Network Structure
-input_size = 8 #! IW -> 10, OW -> 8
+input_size = 12
 output_size = 1
-hidden_size = 108
-hidden_layers = 4 
+hidden_size = 10
+hidden_layers = 1 
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -46,39 +45,19 @@ class Net(nn.Module):
     def forward(self, x):
         return self.network(x)
 
-
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-class myLoss(nn.Module):
-    def __init__(self):
-        super(myLoss, self).__init__()
-
-    def forward(self, outputs, labels):
-        # loss = torch.sum((outputs[labels != 0] - labels[labels != 0])**2) / labels.numel()
-        # loss = torch.mean((outputs[labels != 0] - labels[labels != 0])**2)
-        rms_loss = torch.sqrt(torch.mean((outputs - labels) ** 2))
-        max_loss, _ = torch.max(torch.abs(outputs - labels), dim=0)
-        loss = rms_loss + max_loss
-        return loss
-
 
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    # cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
-    # df = df.drop(columns=cols_drop)
-    data_length = 50_000
-   
+    data_length = 50 #! train data number
+
     # pre-process
-    inputs = df.iloc[:8, 0:data_length].values #! IW -> 10, OW -> 8
+    inputs = df.iloc[:12, 0:data_length].values
     inputs[:2] = inputs[:2]/10
-    
-    outputs = df.iloc[28:, 0:data_length].values #! power loss -> 10, inductor -> 22 / 28
-    # outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
-    # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
-    # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
+    inputs[2:] = inputs[2:]/1e3
+    outputs = df.iloc[22:23, 0:data_length].values
     
     # log tranfer
     inputs = np.log10(inputs)
@@ -87,11 +66,12 @@ def get_dataset(adr):
     # normalization
     inputs_max = np.max(inputs, axis=1, keepdims=True)
     inputs_min = np.min(inputs, axis=1, keepdims=True)
+    denom = inputs_max - inputs_min
+    denom[denom == 0] = 1
+    inputs = (inputs - inputs_min) / denom
+
     outputs_max = np.max(outputs, axis=1, keepdims=True)
     outputs_min = np.min(outputs, axis=1, keepdims=True)
-    diff = inputs_max - inputs_min
-    diff[diff == 0] = 1
-    inputs = np.where(diff == 1, 1, (inputs - inputs_min) / diff)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -124,7 +104,7 @@ def main():
         print("Now this program runs on cpu")
 
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset/trainset_OW_5w_4.0.csv') #! adjusted in each trainning
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_coef/dataset_3D_inductor.csv') 
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
@@ -145,7 +125,6 @@ def main():
         f.write(f"Number of parameters: {count_parameters(net)}\n")
 
     # Setup optimizer
-    # criterion = myLoss()
     criterion = nn.MSELoss()
     optimizer = optim.Adam(net.parameters(), lr=LR_INI) 
     
@@ -218,7 +197,6 @@ def main():
     # Relative Error
     Error_re = np.zeros_like(yy_meas)
     Error_re[yy_meas != 0] = abs(yy_pred[yy_meas != 0] - yy_meas[yy_meas != 0]) / abs(yy_meas[yy_meas != 0]) * 100
-    # Error_re = np.squeeze(Error_re, axis=0)
 
     Error_re_avg = np.mean(Error_re)
     Error_re_rms = np.sqrt(np.mean(Error_re ** 2))
