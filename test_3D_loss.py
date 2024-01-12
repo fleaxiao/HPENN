@@ -154,8 +154,13 @@ def main():
 
     loss_pred = yy_pred *((corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2) + (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)*2
     Error_loss = abs(loss_pred - loss) / abs(loss) * 100
+
+    Error_loss_avg = np.mean(Error_loss)
+    Error_loss_rms = np.sqrt(np.mean(Error_loss ** 2))
     Error_loss_max = np.max(Error_loss)
 
+    print(f"Loss Relative Error: {Error_loss_avg:.8f}%")
+    print(f"Loss RMS Error: {Error_loss_rms:.8f}%")
     print(f"Loss Max Error: {Error_loss_max:.8f}%")
    
 if __name__ == "__main__":

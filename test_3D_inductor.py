@@ -154,8 +154,13 @@ def main():
 
     inductor_pred = 2*(yy_pred *((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2) + (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2)
     Error_inductor = abs(inductor_pred - inductance) / abs(inductance) * 100
+
+    Error_inductor_avg = np.mean(Error_inductor)
+    Error_inductor_rms = np.sqrt(np.mean(Error_inductor ** 2))
     Error_inductor_max = np.max(Error_inductor)
 
+    print(f"Inductor Relative Error: {Error_inductor_avg:.8f}%")
+    print(f"Inductor RMS Error: {Error_inductor_rms:.8f}%")
     print(f"Inductor Max Error: {Error_inductor_max:.8f}%")
    
 if __name__ == "__main__":
