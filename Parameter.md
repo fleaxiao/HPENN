@@ -2,13 +2,13 @@
 #### IW 
 - Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1; hw; dw
 #### OW
-- Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1; hw; dcs
+- Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1
 
 ## Input parameter range (before log transfer)
 | Parameter Name | Max          | Min         | Range (down-scale) | 
 | :------------: | :----------: | :---------: | :----------------: |
-| Np             | 0.6          | 0.3         |                    |
-| Ns             | 0.6          | 0.3         |                    |
+| Np             | 0.9          | 0.3         |                    |
+| Ns             | 0.9          | 0.3         |                    |
 | hw1            | 0.6          | 0.1         | 0.1 ~ 0.15         |
 | hw2            | 0.6          | 0.055       | 0.1 ~ 0.15         |
 | dww_ii_x       | 0.005        | 0.001       |                    | 
