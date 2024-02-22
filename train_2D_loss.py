@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-train_layer = 5 #! adjusted in each trainning
+train_layer = 1 #! adjusted in each trainning
 LOG_FILE = f"train_IW_{train_layer}.txt"
 MODEL_FILE = f"Model_2D_IW_{train_layer}.pth"
 ERROR_FILE = f"train_error_IW_{train_layer}.csv"
@@ -129,7 +129,7 @@ def main():
         print("Now this program runs on cpu")
 
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/trainset_IW_5w_4.0.csv') #! adjusted in each trainning
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/dataset_IW_coef.csv') #! adjusted in each trainning
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
