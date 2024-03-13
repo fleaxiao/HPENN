@@ -7,23 +7,23 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-train_layer = 5 #! adjusted in each trainning
+train_layer = 1 #! adjusted in each trainning
 LOG_FILE = f"train_IW_{train_layer}.txt"
 MODEL_FILE = f"Model_2D_IW_{train_layer}.pth"
 ERROR_FILE = f"train_error_IW_{train_layer}.csv"
 
 # Hyperparameters
-NUM_EPOCH = 500 #! 1000
-BATCH_SIZE = 32
+NUM_EPOCH = 600 #! 600
+BATCH_SIZE = 128
 LR_INI = 0.0006758499286351658
 DECAY_EPOCH = 100
 DECAY_RATIO = 0.5
 
 # Neural Network Structure
-input_size = 10 #! IW -> 10, OW -> 8
+input_size = 12 #! IW -> 12, OW -> 10
 output_size = 1
-hidden_size = 100
-hidden_layers = 2 
+hidden_size = 5000
+hidden_layers = 4 
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -65,38 +65,53 @@ class myLoss(nn.Module):
 # Load the datasheet
 def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
-    cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
+    # print(df.shape)
+    # print(df.min(axis=1))
+    # print(df.max(axis=1))
+    # print((df.iloc[26]<0).sum())
+    # print((df.iloc[27]<0).sum())
+    # print((df.iloc[28]<0).sum())
+    # print((df.iloc[29]<0).sum())
+    cols_drop = df.iloc[11+train_layer][df.iloc[11+train_layer] == 0].index # delect the row where the element in line x is zero
     df = df.drop(columns=cols_drop)
-    data_length = 50_000
+    data_length = 30_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values #! IW -> 10, OW -> 8
+    inputs = df.iloc[:12, 0:data_length].values #! IW -> 12, OW -> 10
     inputs[:2] = inputs[:2]/10
+    # print(np.min(inputs, axis=1))
+    # print(np.max(inputs, axis=1))
     
-    outputs = df.iloc[10:, 0:data_length].values
-    outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
+    outputs = df.iloc[12:, 0:data_length].values
+    outputs = outputs[train_layer-1:train_layer]*1e3 # train specific layer
     # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
     # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
     
     # log tranfer
     inputs = np.log10(inputs)
-    outputs = np.log10(outputs)
+    outputs =  np.log10(outputs)
 
     # normalization
-    inputs[0] = (inputs[0] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
-    inputs[1] = (inputs[1] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
-    inputs[2] = (inputs[2] - np.log10(0.1)) / (np.log10(0.6) - np.log10(0.1))
-    inputs[3] = (inputs[3] - np.log10(0.055)) / (np.log10(0.6) - np.log10(0.055))
-    inputs[4] = (inputs[4] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
-    inputs[5] = (inputs[5] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
-    inputs[6] = (inputs[6] - np.log10(0.04)) / (np.log10(0.1) - np.log10(0.04))
-    inputs[7] = (inputs[7] - np.log10(0.01)) / (np.log10(0.05) - np.log10(0.01))
-    inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
-    inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
+    inputs[0] = (inputs[0] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
+    inputs[1] = (inputs[1] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
+    inputs[2] = (inputs[2] - np.log10(7e-2)) / (np.log10(7e-2) - np.log10(2e-2))
+    inputs[3] = (inputs[3] - np.log10(7e-2)) / (np.log10(7e-2) - np.log10(1e-2))
+    inputs[4] = (inputs[4] - np.log10(3e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs[5] = (inputs[5] - np.log10(3e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs[6] = (inputs[6] - np.log10(3e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs[7] = (inputs[7] - np.log10(3e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs[8] = (inputs[8] - np.log10(6e-3)) / (np.log10(6e-3) - np.log10(5e-4))
+    inputs[9] = (inputs[9] - np.log10(4e-3)) / (np.log10(4e-3) - np.log10(1e-3))
+    inputs[10] = (inputs[10] - np.log10(8.2e-2)) / (np.log10(8.2e-2) - np.log10(2.2e-2))
+    inputs[11] = (inputs[11] - np.log10(2.26e-2)) / (np.log10(2.26e-2) - np.log10(5.5e-3))
 
     outputs_max = np.array([-3.2]) # np.max(outputs, axis=1, keepdims=True)
     outputs_min = np.array([-4.6]) # np.min(outputs, axis=1, keepdims=True)
+    outputs_max = np.max(outputs, axis=1, keepdims=True)
+    outputs_min = np.min(outputs, axis=1, keepdims=True)
+    print(outputs_max)
+    print(outputs_min)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -127,9 +142,9 @@ def main():
     else:
         device = torch.device("cpu")
         print("Now this program runs on cpu")
-
+    print("GPU型号： ",torch.cuda.get_device_name(0))
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/trainset_IW_5w_4.0.csv') #! adjusted in each trainning
+    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/Trainset_5w_IW_paper.csv') #! adjusted in each trainning
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size

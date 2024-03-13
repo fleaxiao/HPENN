@@ -1,29 +1,42 @@
+## Skeleton Dimension 
+### measured parameter
+- length: 65mm
+- width: 25mm
+- height: 35mm
+- dww_ii = 0.2mm
+- dww_oo = 0.2mm
+### inference paramter
+- perimeter: (65+25)*2=180mm
+- foil length: 180*6 = 1080mm ~ 1m
+
 ## Network Input Name
 #### IW 
 - Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1; hw; dw
 #### OW
 - Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1
 
-## Input parameter range (before log transfer)
-| Parameter Name | Max          | Min         | Range (down-scale) | 
-| :------------: | :----------: | :---------: | :----------------: |
-| Np             | 0.9          | 0.3         |                    |
-| Ns             | 0.9          | 0.3         |                    |
-| hw1            | 0.6          | 0.1         | 0.1 ~ 0.15         |
-| hw2            | 0.6          | 0.055       | 0.1 ~ 0.15         |
-| dww_ii_x       | 0.005        | 0.001       |                    | 
-| dww_oo_x       | 0.005        | 0.001       |                    |
-| dww_x          | 0.1          | 0.04        |                    |
-| lcore_x1       | 0.05         | 0.01        |                    |
-| hw             | 0.8          | 0.135       |                    |
-| dw             | 0.307        | 0.102       |                    |
+## Input parameter range
+| Parameter Name | Max          | Min         | Standard           | Gap | Restriction                          |
+| :------------: | :----------: | :---------: | :----------------: | :--:| :-----------------------------------:|
+| Np             | 6            | 3           | 6                  | 1   |
+| Ns             | 6            | 3           | 6                  | 1   |
+| hw1            | 70           | 20          | 35                 | 5   |
+| hw2            | 70           | 10          | 25                 | 5   |
+| dww_i_x        | 0.3          | 0.1         | 0.2                | 0.1 |
+| dww_o_x        | 0.3          | 0.1         | 0.2                | 0.1 |
+| dww_ii_x       | 0.3          | 0.1         | 0.2                | 0.1 |
+| dww_oo_x       | 0.3          | 0.1         | 0.2                | 0.1 |
+| dww_x          | 6            | 0.5         | 3.5                | 0.5 |
+| lcore_x1       | 4            | 1           | 1.5                | 0.5 |
+| hw             | 82           | 22          | 45                 | 5   | hw = max(hw1+lcore_y1, hw2+lcore_y2) |
+| dw             | 22.6         | 6           | 13                 | 5   | dw = Np*
 |  
-| lcs            | 0.5          | 0.2         | 0.1 ~ 0.2          |
-| dcs            | 0.2          | 0.05        | 0.05 ~ 0.1         |
-| lcore_x1       | 0.05         | 0.01        | 0.01 ~ 0.015       |
-| lcore_x2       | 0.08         | 0.04        | 0.04 ~ 0.05        |
-| lcore_y1       | 0.05         | 0.01        | 0.01 ~ 0.015       |
-| lcore_y2       | 0.08         | 0.04        | 0.04 ~ 0.05        |
+| lcs            | 40           | 20          | 32                 | 2   |
+| dcs            | 20           | 6           | 11                 | 2   |
+| lcore_x1       | 4            | 1           | 1.5                | 0.5 |
+| lcore_x2       | 6            | 3           | 3.5                | 0.5 |
+| lcore_y1       | 4            | 1           | 2                  | 0.5 |
+| lcore_y2       | 6            | 3           | 4                  | 1   |
 
 ## Output parameter range (after log transfer)
 | Parameter Name | Max          | Min         | 
@@ -32,16 +45,14 @@
 | inductor       | -5.0         | -7.4        |   
 
 ## System parameter
-- Np; Ns; hw1; hw2; dww_ii_x; dww_oo_x; dww_x; lcore_x1; hw; dw
-
 |  Model Name   | Hidden Size  | Outputs Max | Outputs Min | 
 | :-----------: | :----------: | :---------: | :---------: |
-| IW_1          | 143          | -3.29317984 | -4.53943289 |
-| IW_2          | 143          | -3.36737064 | -4.5309147  |
-| IW_3          | 122          | -3.40059732 | -4.51019615 |
-| IW_4          | 143          | -3.4115266  | -4.47865267 |
-| IW_5          | 127          | -3.40195401 | -4.43771903 |
-| IW_6          | 102          | -3.36174043 | -4.39786401 |
+| IW_1          | 100          | 0.99305247  | -0.08986672 |
+| IW_2          | 100          | 0.99350236  | -0.08335658 |
+| IW_3          | 122          | 1.00414934  | -0.06914772 |
+| IW_4          | 143          | 1.05445984  | -0.04385079 |
+| IW_5          | 127          | 1.08700012  | -0.0153017  |
+| IW_6          | 102          | 1.19013552  | 0.02844924  |
 | IW_7          | 100          | -3.21792889 | -4.48335887 |
 | IW_8          | 143          | -3.23065222 | -4.49142988 |
 | IW_9          | 134          | -3.22961934 | -4.49195535 |
@@ -66,3 +77,9 @@
 | Model_2D_IW_outside | 101          | -5.03675538 | -6.73017196 |
 | Model_2D_OW_inside  | 101          | -5.04488014 | -6.59247653 |
 | Model_2D_OW_outside | 101          | -5.26394868 | -7.33568434 |
+
+## Time
+|  Dataset Name | Size         | Time        | 
+| :-----------: | :----------: | :---------: |
+| IW            | 5w           | 16:19:42    |
+| OW            | 5w           | 10:41:22    |
