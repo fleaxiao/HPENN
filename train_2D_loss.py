@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 train_layer = 1 #! adjusted in each trainning
+train_layer = 1 #! adjusted in each trainning
 LOG_FILE = f"train_IW_{train_layer}.txt"
 MODEL_FILE = f"Model_2D_IW_{train_layer}.pth"
 ERROR_FILE = f"train_error_IW_{train_layer}.csv"

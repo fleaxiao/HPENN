@@ -16,10 +16,10 @@ DECAY_RATIO = 0.95
 # Neural Network Structure
 input_size = 8 #! IW -> 10, OW -> 8
 output_size = 1
-hidden_size = 123
+hidden_size = 81
 hidden_layers = 4
 
-train_layer = 9
+train_layer = 10
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -112,7 +112,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     net = Net().to(device)
-    net.load_state_dict(torch.load('results_loss/results_OW/Model_2D_OW_9.pth', map_location = torch.device('cpu')))
+    net.load_state_dict(torch.load('results_loss/results_OW/Model_2D_OW_10.pth', map_location = torch.device('cpu')))
 
   # Evaluation
     net.eval()

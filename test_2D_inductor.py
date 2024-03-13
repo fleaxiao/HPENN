@@ -4,6 +4,9 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import time
+
+start = time.perf_counter()
 
 # Hyperparameters
 NUM_EPOCH = 1000
@@ -14,7 +17,7 @@ DECAY_EPOCH = 30
 DECAY_RATIO = 0.95
 
 # Neural Network Structure
-input_size = 8 #! IW -> 10, OW -> 8
+input_size = 10 #! IW -> 10, OW -> 8
 output_size = 1
 hidden_size = 107
 hidden_layers = 4
@@ -47,10 +50,10 @@ def get_dataset(adr):
     df = pd.read_csv(adr, header=None)
     # cols_drop = df.iloc[9+train_layer][df.iloc[9+train_layer] == 0].index # delect the row where the element in line x is zero
     # df = df.drop(columns=cols_drop)
-    data_length = 50_000
+    data_length = 1
    
     # pre-process
-    inputs = df.iloc[:8, 0:data_length].values #! IW -> 10, OW -> 8
+    inputs = df.iloc[:10, 0:data_length].values #! IW -> 10, OW -> 8
     inputs[:2] = inputs[:2]/10
     
     outputs = df.iloc[22:28, 0:data_length].values #! power loss -> 10, inductor -> 22 / 28
@@ -72,13 +75,13 @@ def get_dataset(adr):
     inputs[5] = (inputs[5] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
     inputs[6] = (inputs[6] - np.log10(0.04)) / (np.log10(0.1) - np.log10(0.04))
     inputs[7] = (inputs[7] - np.log10(0.01)) / (np.log10(0.05) - np.log10(0.01))
-    # inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
-    # inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
+    inputs[8] = (inputs[8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
+    inputs[9] = (inputs[9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
 
-    # outputs_max = np.array([-3.2])
-    # outputs_min = np.array([-4.6]) 
-    outputs_max = np.max(outputs, axis=1, keepdims=True)
-    outputs_min = np.min(outputs, axis=1, keepdims=True)
+    outputs_max = np.array([-5.0])
+    outputs_min = np.array([-7.4]) 
+    # outputs_max = np.max(outputs, axis=1, keepdims=True)
+    # outputs_min = np.min(outputs, axis=1, keepdims=True)
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -103,7 +106,7 @@ def main():
         print("Now this program runs on cpu")
     
     # Load dataset and model
-    test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_2D/trainset_OW_5w_4.0.csv')
+    test_dataset, test_outputs_max, test_outputs_min = get_dataset('dataset_2D/trainset_IW_5w_4.0.csv')
 
     if torch.cuda.is_available():
         kwargs = {'num_workers': 0, 'pin_memory': True, 'pin_memory_device': "cuda"}
@@ -112,7 +115,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False, **kwargs)
 
     net = Net().to(device)
-    net.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
+    net.load_state_dict(torch.load('results_inductor/Model_2D_IW_inside.pth', map_location = torch.device('cpu')))
 
   # Evaluation
     net.eval()
@@ -150,6 +153,9 @@ def main():
     print(f"Relative Error: {Error_re_avg:.8f}%")
     print(f"RMS Error: {Error_re_rms:.8f}%")
     print(f"MAX Error: {Error_re_max:.8f}%")
+
+    end = time.perf_counter()
+    print('Running time：{}s'.format(end-start))
    
 if __name__ == "__main__":
     main()
