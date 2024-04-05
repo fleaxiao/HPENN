@@ -7,7 +7,7 @@ import torch.nn as nn
 
 # Neural Network Structure
 output_size = 1
-hidden_layers = 4 
+hidden_layers = 3
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -53,9 +53,9 @@ class CombinedModel(nn.Module):
 
 def get_dataset(adr, Np, Ns):
     df = pd.read_csv(adr, skiprows=5, header=None)
-    data_length = 50_000
+    data_length, _ = df.shape
    
-    inputs = df.iloc[0:data_length, 0:21].values
+    inputs = df.iloc[0:data_length, 0:21].values / 1e3
     hw1 = inputs[0:,0].reshape(-1,1)
     hw2 = inputs[0:,1].reshape(-1,1)
     dw1 = inputs[0:,2].reshape(-1,1)
@@ -69,17 +69,42 @@ def get_dataset(adr, Np, Ns):
     lcore_x2 = inputs[0:,10].reshape(-1,1)
     lcore_y1 = inputs[0:,11].reshape(-1,1)
     lcore_y2 = inputs[0:,12].reshape(-1,1)
-    dc2c = inputs[0:,13].reshape(-1,1)
 
     hw = np.maximum(hw1+2*lcore_y1, hw2+2*lcore_y2)
     dw = lcore_x1 + Ns*dw1 + (Ns-1)*dww_ii_x + dww_x + Np*dw2 + (Np-1)*dww_oo_x + lcore_x2
-    inputs = np.concatenate((Np*np.ones_like(hw1), Ns*np.ones_like(hw1), hw1, hw2, dww_ii_x, dww_oo_x, dww_x, lcore_x1, hw, dw, lcs, dcs, dc2c), axis = 1) 
+    inputs = np.concatenate((Np*np.ones_like(hw1), Ns*np.ones_like(hw1), hw1, hw2, dw1, dw2, dww_ii_x, dww_oo_x, dww_x, lcore_x1, hw, dw, lcs, dcs), axis = 1) 
 
     outputs = df.iloc[0:data_length:, 21:].values
-    Rac = np.sum(outputs[0:,0:12], axis=1).reshape(-1,1)
+    Rac = np.sum(outputs[0:,0:12], axis=1).reshape(-1,1) 
     Llk = np.sum(outputs[0:,12:24], axis=1).reshape(-1,1)
 
-    return inputs, Rac, Llk
+    # Dowell's equation
+    permeability = 1.256629e-6
+    conductivity = 5.96e7
+    skin_depth = np.sqrt(2/(2*3.14*10e3*permeability*conductivity))
+    delta_1 = np.sqrt(hw1/hw)*dw1 / skin_depth
+    delta_2 = np.sqrt(hw2/hw)*dw2 / skin_depth
+    factor_1_1 = (np.sinh(2*delta_1)+np.sin(2*delta_1)) / (np.cosh(2*delta_1)-np.cos(2*delta_1))
+    factor_1_2 = (np.sinh(delta_1)-np.sin(delta_1)) / (np.cosh(delta_1)+np.cos(delta_1))
+    factor_2_1 = (np.sinh(2*delta_2)+np.sin(2*delta_2)) / (np.cosh(2*delta_2)-np.cos(2*delta_2))
+    factor_2_2 = (np.sinh(delta_2)-np.sin(delta_2)) / (np.cosh(delta_2)+np.cos(delta_2))
+
+    R_dc_1 = 1 / (conductivity*dw1*hw1)
+    R_dc_2 = 1 / (conductivity*dw2*hw2)
+
+    R_dowell_i = np.zeros((data_length, 6))
+    R_dowell_o = np.zeros((data_length, 6))
+
+    for i in range(0,6):
+        R_dowell_i[:,i] = np.squeeze(R_dc_1*delta_1*(factor_1_1+2*(i+1)*i*factor_1_2))
+
+    for i in range(0,6):
+        R_dowell_o[:,i] = np.squeeze(R_dc_2*delta_2*(factor_2_1+2*(i+1)*i*factor_2_2))
+    R_dowell_o = R_dowell_o[:, ::-1]
+
+    R_dowell = np.concatenate((R_dowell_i, R_dowell_o), axis=1)
+
+    return inputs, Rac, Llk, R_dowell
 
 def preprocess(inputs, Llk, Rac):
     # preprocess
@@ -87,7 +112,7 @@ def preprocess(inputs, Llk, Rac):
     Llk_pre = np.copy(Llk)
     Rac_pre = np.copy(Rac)
     inputs_pre[0:,:2] = inputs_pre[0:,:2]/10
-    inputs_pre[0:,2:] = inputs_pre[0:,2:]/1e3
+    inputs_pre[0:,2:] = inputs_pre[0:,2:]
 
     # log tranfer
     inputs_pre = np.log10(inputs_pre)
@@ -95,20 +120,22 @@ def preprocess(inputs, Llk, Rac):
     Rac_pre = np.log10(Rac_pre)
 
     # normalization
-    inputs_pre[0:,0] = (inputs_pre[0:,0] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
-    inputs_pre[0:,1] = (inputs_pre[0:,1] - np.log10(0.3)) / (np.log10(0.6) - np.log10(0.3))
-    inputs_pre[0:,2] = (inputs_pre[0:,2] - np.log10(0.1)) / (np.log10(0.6) - np.log10(0.1))
-    inputs_pre[0:,3] = (inputs_pre[0:,3] - np.log10(0.055)) / (np.log10(0.6) - np.log10(0.055))
-    inputs_pre[0:,4] = (inputs_pre[0:,4] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
-    inputs_pre[0:,5] = (inputs_pre[0:,5] - np.log10(0.001)) / (np.log10(0.005) - np.log10(0.001))
-    inputs_pre[0:,6] = (inputs_pre[0:,6] - np.log10(0.04)) / (np.log10(0.1) - np.log10(0.04))
-    inputs_pre[0:,7] = (inputs_pre[0:,7] - np.log10(0.01)) / (np.log10(0.05) - np.log10(0.01))
-    inputs_pre[0:,8] = (inputs_pre[0:,8] - np.log10(0.135)) / (np.log10(0.8) - np.log10(0.135))
-    inputs_pre[0:,9] = (inputs_pre[0:,9] - np.log10(0.102)) / (np.log10(0.307) - np.log10(0.102))
-    
+    inputs_pre[0:,0] = (inputs_pre[0:,0] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
+    inputs_pre[0:,1] = (inputs_pre[0:,1] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
+    inputs_pre[0:,2] = (inputs_pre[0:,2] - np.log10(2e-2)) / (np.log10(7e-2) - np.log10(2e-2))
+    inputs_pre[0:,3] = (inputs_pre[0:,3] - np.log10(1e-2)) / (np.log10(7e-2) - np.log10(1e-2))
+    inputs_pre[0:,4] = (inputs_pre[0:,4] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs_pre[0:,5] = (inputs_pre[0:,5] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs_pre[0:,6] = (inputs_pre[0:,6] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs_pre[0:,7] = (inputs_pre[0:,7] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
+    inputs_pre[0:,8] = (inputs_pre[0:,8] - np.log10(5e-4)) / (np.log10(6e-3) - np.log10(5e-4))
+    inputs_pre[0:,9] = (inputs_pre[0:,9] - np.log10(1e-3)) / (np.log10(4e-3) - np.log10(1e-3))
+    inputs_pre[0:,10] = (inputs_pre[0:,10] - np.log10(2.2e-2)) / (np.log10(8.2e-2) - np.log10(2.2e-2))
+    inputs_pre[0:,11] = (inputs_pre[0:,11] - np.log10(5.5e-3)) / (np.log10(2.26e-2) - np.log10(5.5e-3))
+
     # tensor transfer
-    input_tensor_IW = torch.tensor(inputs_pre[0:,0:10], dtype=torch.float32)
-    input_tensor_OW = torch.tensor(inputs_pre[0:,0:8], dtype=torch.float32)
+    input_tensor_IW = torch.tensor(inputs_pre[0:,0:12], dtype=torch.float32)
+    input_tensor_OW = torch.tensor(inputs_pre[0:,0:11], dtype=torch.float32)
 
     Llk_tensor = torch.tensor(Llk_pre, dtype=torch.float32)
     Rac_tensor = torch.tensor(Rac_pre, dtype=torch.float32)
@@ -134,7 +161,7 @@ def get_loss_model_output(model, device, data_loader, inputs, winding_number):
             y_pred.append(outputs_tensor)
     y_pred = torch.cat(y_pred, dim=0)
     yy_pred = y_pred.cpu().numpy()
-    yy_pred = yy_pred * ((-3.2) - (-4.6)) + (-4.6)
+    yy_pred = yy_pred * ((1) - (-0.15)) + (-0.15)
     yy_pred = 10**yy_pred
 
     mask = np.zeros_like(yy_pred)
@@ -144,23 +171,23 @@ def get_loss_model_output(model, device, data_loader, inputs, winding_number):
     
     return yy_pred
 
-def get_inductor_model_output(model, device, data_loader, inputs, winding_number):
-    y_pred = []
-    with torch.no_grad():
-        for inputs_tensor, _, _ in data_loader:
-            outputs_tensor = model(inputs_tensor.to(device))
-            y_pred.append(outputs_tensor)
-    y_pred = torch.cat(y_pred, dim=0)
-    yy_pred = y_pred.cpu().numpy()
-    yy_pred = yy_pred * ((-5.0) - (-7.4)) + (-7.4)
-    yy_pred = 10**yy_pred
+# def get_inductor_model_output(model, device, data_loader, inputs, winding_number):
+#     y_pred = []
+#     with torch.no_grad():
+#         for inputs_tensor, _, _ in data_loader:
+#             outputs_tensor = model(inputs_tensor.to(device))
+#             y_pred.append(outputs_tensor)
+#     y_pred = torch.cat(y_pred, dim=0)
+#     yy_pred = y_pred.cpu().numpy()
+#     yy_pred = yy_pred * ((-5.0) - (-7.4)) + (-7.4)
+#     yy_pred = 10**yy_pred
 
-    mask = np.zeros_like(yy_pred)
-    for i, num_ones in enumerate(inputs[0:,winding_number]):
-        mask[i, :int(num_ones)] = 1
-    yy_pred = mask*yy_pred  
+#     mask = np.zeros_like(yy_pred)
+#     for i, num_ones in enumerate(inputs[0:,winding_number]):
+#         mask[i, :int(num_ones)] = 1
+#     yy_pred = mask*yy_pred  
     
-    return yy_pred
+#     return yy_pred
 
 def main():
 
@@ -177,23 +204,25 @@ def main():
     # Load dataset       
     folder_path = 'dataset_3D'
     pattern = re.compile(r'results_(\d+)_(\d+)_(\d+)\.csv')
-    inputs = np.array([]).reshape(-1,13)
+    inputs = np.array([]).reshape(-1,14)
     Rac = np.array([]).reshape(-1,1)
     Llk = np.array([]).reshape(-1,1)
+    R_dowell = np.array([]).reshape(-1,12)
 
     for filename in os.listdir(folder_path):
         match = pattern.match(filename)
         if match:
-            Np = int(match.group(1)) 
-            Ns = int(match.group(2)) 
+            Ns = int(match.group(1)) 
+            Np = int(match.group(2)) 
 
             file_path = os.path.join(folder_path, filename)
-            inputs_i, Rac_i, Llk_i = get_dataset(file_path, Np, Ns)
+            inputs_i, Rac_i, Llk_i, R_dowell_i = get_dataset(file_path, Np, Ns)
 
         inputs = np.concatenate((inputs, inputs_i), axis = 0)
         Rac = np.concatenate((Rac, Rac_i), axis = 0)
         Llk = np.concatenate((Llk, Llk_i), axis = 0)
-    
+        R_dowell = np.concatenate((R_dowell, R_dowell_i), axis = 0)
+
     # Preprocess
     dataset_IW, dataset_OW = preprocess(inputs, Llk, Rac)
     data_loader_IW = torch.utils.data.DataLoader(dataset_IW, batch_size=4, shuffle=False, **kwargs)
@@ -201,85 +230,85 @@ def main():
 
     # Load loss model
     # IW Ls
-    input_size = 10
-    hidden_size_sequence = [143, 143, 122, 143, 127, 102]
+    input_size = 12
+    hidden_size_sequence = [100, 100, 100, 100, 100, 100]
     model_loss_IW_Ls = load_loss_model(input_size, hidden_size_sequence, device)
     model_loss_IW_Ls.load_state_dict(torch.load('results_loss/Model_2D_IW_Ls.pth', map_location = torch.device('cpu')))
 
     # IW Lp
-    input_size = 10
-    hidden_size_sequence = [100, 143, 134, 143, 140, 116]
+    input_size = 12
+    hidden_size_sequence = [100, 100, 100, 100, 100, 100]
     model_loss_IW_Lp = load_loss_model(input_size, hidden_size_sequence, device)
     model_loss_IW_Lp.load_state_dict(torch.load('results_loss/Model_2D_IW_Lp.pth', map_location = torch.device('cpu')))
  
     # OW Ls
-    input_size = 8
-    hidden_size_sequence = [100, 100, 122, 122, 126, 102]
+    input_size = 11
+    hidden_size_sequence = [100, 100, 100, 100, 100, 100]
     model_loss_OW_Ls = load_loss_model(input_size, hidden_size_sequence, device)
     model_loss_OW_Ls.load_state_dict(torch.load('results_loss/Model_2D_OW_Ls.pth', map_location = torch.device('cpu')))
 
     # OW Lp
-    input_size = 8
-    hidden_size_sequence = [81, 109, 123, 81, 111, 125]
+    input_size = 11
+    hidden_size_sequence = [100, 100, 100, 100, 100, 100]
     model_loss_OW_Lp = load_loss_model(input_size, hidden_size_sequence, device)
     model_loss_OW_Lp.load_state_dict(torch.load('results_loss/Model_2D_OW_Lp.pth', map_location = torch.device('cpu')))
 
-    # Load inductor model
-    # IW Ls
-    input_size = 10 
-    hidden_size = 107
-    model_inductor_IW_Ls = Net(input_size, hidden_size).to(device)
-    model_inductor_IW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_IW_inside.pth', map_location = torch.device('cpu')))
+    # # Load inductor model
+    # # IW Ls
+    # input_size = 10 
+    # hidden_size = 107
+    # model_inductor_IW_Ls = Net(input_size, hidden_size).to(device)
+    # model_inductor_IW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_IW_inside.pth', map_location = torch.device('cpu')))
 
-    # IW Lp
-    input_size = 10 
-    hidden_size = 101
-    model_inductor_IW_Lp = Net(input_size, hidden_size).to(device)
-    model_inductor_IW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_IW_outside.pth', map_location = torch.device('cpu')))
+    # # IW Lp
+    # input_size = 10 
+    # hidden_size = 101
+    # model_inductor_IW_Lp = Net(input_size, hidden_size).to(device)
+    # model_inductor_IW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_IW_outside.pth', map_location = torch.device('cpu')))
 
-    # OW Ls
-    input_size = 8
-    hidden_size = 101
-    model_inductor_OW_Ls = Net(input_size, hidden_size).to(device)
-    model_inductor_OW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
+    # # OW Ls
+    # input_size = 8
+    # hidden_size = 107
+    # model_inductor_OW_Ls = Net(input_size, hidden_size).to(device)
+    # model_inductor_OW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
 
-    # OW Lp
-    input_size = 8
-    hidden_size = 101
-    model_inductor_OW_Lp = Net(input_size, hidden_size).to(device)
-    model_inductor_OW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_OW_outside.pth', map_location = torch.device('cpu')))
+    # # OW Lp
+    # input_size = 8
+    # hidden_size = 101
+    # model_inductor_OW_Lp = Net(input_size, hidden_size).to(device)
+    # model_inductor_OW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_OW_outside.pth', map_location = torch.device('cpu')))
 
     # Output 2D data
     model_loss_IW_Ls.eval()
     model_loss_IW_Lp.eval()
     model_loss_OW_Ls.eval()
     model_loss_OW_Lp.eval()
+    
+    loss_IW_Ls = get_loss_model_output(model_loss_IW_Ls, device, data_loader_IW, inputs, 1)*R_dowell[:,:6]
+    loss_IW_Lp = get_loss_model_output(model_loss_IW_Lp, device, data_loader_IW, inputs, 0)*R_dowell[:,6:]
+    loss_OW_Ls = get_loss_model_output(model_loss_OW_Ls, device, data_loader_OW, inputs, 1)*R_dowell[:,:6]
+    loss_OW_Lp = get_loss_model_output(model_loss_OW_Lp, device, data_loader_OW, inputs, 0)*R_dowell[:,6:]
 
-    loss_IW_Ls = get_loss_model_output(model_loss_IW_Ls, device, data_loader_IW, inputs, 1)
-    loss_IW_Lp = get_loss_model_output(model_loss_IW_Lp, device, data_loader_IW, inputs, 0)
-    loss_OW_Ls = get_loss_model_output(model_loss_OW_Ls, device, data_loader_OW, inputs, 1)
-    loss_OW_Lp = get_loss_model_output(model_loss_OW_Lp, device, data_loader_OW, inputs, 0)
+    # model_inductor_IW_Ls.eval()
+    # model_inductor_IW_Lp.eval()
+    # model_inductor_OW_Ls.eval()
+    # model_inductor_OW_Lp.eval()
 
-    model_inductor_IW_Ls.eval()
-    model_inductor_IW_Lp.eval()
-    model_inductor_OW_Ls.eval()
-    model_inductor_OW_Lp.eval()
-
-    inductor_IW_Ls = get_inductor_model_output(model_inductor_IW_Ls, device, data_loader_IW, inputs, 1)
-    inductor_IW_Lp = get_inductor_model_output(model_inductor_IW_Lp, device, data_loader_IW, inputs, 0)
-    inductor_OW_Ls = get_inductor_model_output(model_inductor_OW_Ls, device, data_loader_OW, inputs, 1)
-    inductor_OW_Lp = get_inductor_model_output(model_inductor_OW_Lp, device, data_loader_OW, inputs, 0)
+    # inductor_IW_Ls = get_inductor_model_output(model_inductor_IW_Ls, device, data_loader_IW, inputs, 1)
+    # inductor_IW_Lp = get_inductor_model_output(model_inductor_IW_Lp, device, data_loader_IW, inputs, 0)
+    # inductor_OW_Ls = get_inductor_model_output(model_inductor_OW_Ls, device, data_loader_OW, inputs, 1)
+    # inductor_OW_Lp = get_inductor_model_output(model_inductor_OW_Lp, device, data_loader_OW, inputs, 0)
 
     # Calculate section and corner loss/inductance
-    section_loss_IW_Ls = np.sum(loss_IW_Ls, axis=1)*inputs[:,10]/1e3
-    section_loss_IW_Lp = np.sum(loss_IW_Lp, axis=1)*inputs[:,10]/1e3
-    section_loss_OW_Ls = np.sum(loss_OW_Ls, axis=1)*(inputs[:,11]+inputs[:,12])*2/1e3
-    section_loss_OW_Lp = np.sum(loss_OW_Lp, axis=1)*(inputs[:,11]+inputs[:,12])*2/1e3
+    section_loss_IW_Ls = np.sum(loss_IW_Ls, axis=1)*inputs[:,12]
+    section_loss_IW_Lp = np.sum(loss_IW_Lp, axis=1)*inputs[:,12]
+    section_loss_OW_Ls = np.sum(loss_OW_Ls, axis=1)*inputs[:,13]*2
+    section_loss_OW_Lp = np.sum(loss_OW_Lp, axis=1)*inputs[:,13]*2
 
-    section_inductor_IW_Ls = inductor_IW_Ls.T*inputs[:,10]/1e3
-    section_inductor_IW_Lp = inductor_IW_Lp.T*inputs[:,10]/1e3
-    section_inductor_OW_Ls = inductor_OW_Ls.T*(inputs[:,11]+inputs[:,12])*2/1e3
-    section_inductor_OW_Lp = inductor_OW_Lp.T*(inputs[:,11]+inputs[:,12])*2/1e3
+    # section_inductor_IW_Ls = inductor_IW_Ls.T*inputs[:,12]
+    # section_inductor_IW_Lp = inductor_IW_Lp.T*inputs[:,12]
+    # section_inductor_OW_Ls = inductor_OW_Ls.T*inputs[:,13]*2
+    # section_inductor_OW_Lp = inductor_OW_Lp.T*inputs[:,13]*2
 
     corner_radius_Ls = np.zeros((np.shape(inputs)[0], 6))
     corner_radius_Lp = np.zeros((np.shape(inputs)[0], 6))
@@ -289,8 +318,8 @@ def main():
     for i in range(0, np.shape(inputs)[0]):
         for j in range(0,6):
             if j < inputs[i,1]:
-                corner_radius_Ls[i,j] = inputs[i,7] + (j)*(inputs[i,4]+ 1) + 0.5
-                length_Ls[i,j] = 2*inputs[i,10] + 4*(inputs[i,11]+inputs[i,12]) + 2*3.14*corner_radius_Ls[i,j] 
+                corner_radius_Ls[i,j] = inputs[i,9] + j*(inputs[i,6] + inputs[i,4]) + inputs[i,4]/2
+                length_Ls[i,j] = 2*inputs[i,12] + 4*inputs[i,13] + 2*3.14*corner_radius_Ls[i,j] 
             else:
                 corner_radius_Ls[i,j] = 0
                 length_Ls[i,j] = 0
@@ -298,43 +327,47 @@ def main():
     for i in range(0, np.shape(inputs)[0]):
         for j in range(0,6):
             if j < inputs[i,0]:
-                corner_radius_Lp[i,j] = inputs[i,7] + j*(inputs[i,5]+ 1) + 0.5 + inputs[i,1]*(inputs[i,4]+ 1) + inputs[i,6]
-                length_Lp[i,j] = 2*inputs[i,10] + 4*(inputs[i,11]+inputs[i,12]) + 2*3.14*corner_radius_Lp[i,j] 
+                corner_radius_Lp[i,j] = inputs[i,9] + j*(inputs[i,7] + inputs[i,5]) + inputs[i,5]/2 + (inputs[i,1]-1)*(inputs[i,6] + inputs[i,4]) + inputs[i,4] + inputs[i,8]
+                length_Lp[i,j] = 2*inputs[i,12] + 4*inputs[i,13] + 2*3.14*corner_radius_Lp[i,j] 
             else:
                 corner_radius_Lp[i,j] = 0
                 length_Lp[i,j] = 0
-    
-    corner_loss_IW_Ls = np.sum(2*3.14*loss_IW_Ls*corner_radius_Ls, axis=1)/1e3
-    corner_loss_IW_Lp = np.sum(2*3.14*loss_IW_Lp*corner_radius_Lp, axis=1)/1e3
-    corner_loss_OW_Ls = np.sum(2*3.14*loss_OW_Ls*corner_radius_Ls, axis=1)/1e3
-    corner_loss_OW_Lp = np.sum(2*3.14*loss_OW_Lp*corner_radius_Lp, axis=1)/1e3
 
-    corner_inductor_IW_Ls = 2*3.14*inductor_IW_Ls.T*np.mean(corner_radius_Ls, axis=1)/1e3
-    corner_inductor_IW_Lp = 2*3.14*inductor_IW_Lp.T*np.mean(corner_radius_Lp, axis=1)/1e3
-    corner_inductor_OW_Ls = 2*3.14*inductor_OW_Ls.T*np.mean(corner_radius_Ls, axis=1)/1e3
-    corner_inductor_OW_Lp = 2*3.14*inductor_OW_Lp.T*np.mean(corner_radius_Lp, axis=1)/1e3
+    corner_loss_IW_Ls = np.sum(2*3.14*loss_IW_Ls*corner_radius_Ls, axis=1)
+    corner_loss_IW_Lp = np.sum(2*3.14*loss_IW_Lp*corner_radius_Lp, axis=1)
+    corner_loss_OW_Ls = np.sum(2*3.14*loss_OW_Ls*corner_radius_Ls, axis=1)
+    corner_loss_OW_Lp = np.sum(2*3.14*loss_OW_Lp*corner_radius_Lp, axis=1)
+
+    # corner_inductor_IW_Ls = 2*3.14*inductor_IW_Ls.T*np.mean(corner_radius_Ls, axis=1)
+    # corner_inductor_IW_Lp = 2*3.14*inductor_IW_Lp.T*np.mean(corner_radius_Lp, axis=1)
+    # corner_inductor_OW_Ls = 2*3.14*inductor_OW_Ls.T*np.mean(corner_radius_Ls, axis=1)
+    # corner_inductor_OW_Lp = 2*3.14*inductor_OW_Lp.T*np.mean(corner_radius_Lp, axis=1)
  
     # Obtain correction factor
     # total_1 = (np.sum(loss_IW_Ls*length_Ls, axis=1) + np.sum(loss_IW_Lp*length_Lp, axis=1)) / 1e3
     # total_2 = (np.sum(loss_OW_Ls*length_Ls, axis=1) + np.sum(loss_OW_Lp*length_Lp, axis=1)) / 1e3
     loss = np.squeeze(Rac.reshape(1,-1))  
-    rest_loss = loss - (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)*2
-    coef_loss = rest_loss / ((corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2)
+    rest_loss = loss - (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)
+    coef_loss = rest_loss / ((section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)+(corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2)
     print(f"loss max corf: {np.max(coef_loss)}")
     print(f"loss min corf: {np.min(coef_loss)}")
+    print(f"loss mean corf: {np.mean(coef_loss)}")
 
-    inductance = np.squeeze(Llk.reshape(1,-1))
-    rest_inductor = inductance/2 - (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2
-    coef_inductor = rest_inductor / ((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2)
-    print(f"inductor max corf: {np.max(coef_inductor)}")
-    print(f"inductor min corf: {np.min(coef_inductor)}")
+    # inductance = np.squeeze(Llk.reshape(1,-1))
+    # rest_inductor = inductance/2 - (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2
+    # coef_inductor = rest_inductor / ((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2)
+    # print(f"inductor max corf: {np.max(coef_inductor)}")
+    # print(f"inductor min corf: {np.min(coef_inductor)}")
 
     # Save data
     save_data_loss = np.vstack([inputs.T, loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp, coef_loss])
+    save_data_loss = save_data_loss.T
+    np.random.shuffle(save_data_loss)
+    save_data_loss = save_data_loss.T
     np.savetxt("dataset_coef/dataset_3D_loss.csv", save_data_loss, delimiter=',')
 
-    save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp, coef_inductor])
-    np.savetxt("dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
+    # save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp, coef_inductor])
+    # np.savetxt("dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
 
 if __name__ == "__main__":
     main()
