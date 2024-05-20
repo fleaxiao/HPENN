@@ -78,7 +78,23 @@ def get_dataset(adr, Np, Ns):
     Rac = np.sum(outputs[0:,0:12], axis=1).reshape(-1,1) 
     Llk = np.sum(outputs[0:,12:24], axis=1).reshape(-1,1)
 
-    return inputs, Rac, Llk
+    # Dowell's equation
+    permeability = 1.256629e-6
+    conductivity = 5.96e7
+    skin_depth = np.sqrt(2/(2*3.14*10e3*permeability*conductivity))
+    delta_1 = np.sqrt(hw1/hw)*dw1 / skin_depth
+    delta_2 = np.sqrt(hw2/hw)*dw2 / skin_depth
+    factor_1_1 = (np.sinh(2*delta_1)-np.sin(2*delta_1)) / (np.cosh(2*delta_1)-np.cos(2*delta_1))
+    factor_1_2 = (np.sinh(delta_1)-np.sin(delta_1)) / (np.cosh(delta_1)-np.cos(delta_1))
+    factor_2_1 = (np.sinh(2*delta_2)-np.sin(2*delta_2)) / (np.cosh(2*delta_2)-np.cos(2*delta_2))
+    factor_2_2 = (np.sinh(delta_2)-np.sin(delta_2)) / (np.cosh(delta_2)-np.cos(delta_2))
+
+    F_L_1 = 1/(2*Ns**2*delta_1)*((4*Ns**2-1)*factor_1_1-2*(Ns**2-1)*factor_1_2)
+    F_L_2 = 1/(2*Np**2*delta_2)*((4*Np**2-1)*factor_2_1-2*(Np**2-1)*factor_2_2)
+
+    L = permeability*Ns**2/hw*((dw1*Ns/3*F_L_1+dww_ii_x*(Ns-1)/(2*Ns))+(dw2*Np/3*F_L_2+dww_oo_x*(Np-1)/(2*Np))+dww_x)
+
+    return inputs, Rac, Llk, L
 
 def preprocess(inputs, Llk, Rac):
     # preprocess
@@ -116,7 +132,7 @@ def preprocess(inputs, Llk, Rac):
 
     return torch.utils.data.TensorDataset(input_tensor_IW, Llk_tensor, Rac_tensor), torch.utils.data.TensorDataset(input_tensor_OW, Llk_tensor, Rac_tensor)
 
-def get_inductor_model_output(model, device, data_loader, inputs, winding_number):
+def get_inductor_model_output(model, device, data_loader):
     y_pred = []
     with torch.no_grad():
         for inputs_tensor, _, _ in data_loader:
@@ -124,14 +140,9 @@ def get_inductor_model_output(model, device, data_loader, inputs, winding_number
             y_pred.append(outputs_tensor)
     y_pred = torch.cat(y_pred, dim=0)
     yy_pred = y_pred.cpu().numpy()
-    yy_pred = yy_pred * ((-5.0) - (-7.4)) + (-7.4)
+    yy_pred = yy_pred * ((-0.6) - (0.7)) + (0.7)
     yy_pred = 10**yy_pred
 
-    mask = np.zeros_like(yy_pred)
-    for i, num_ones in enumerate(inputs[0:,winding_number]):
-        mask[i, :int(num_ones)] = 1
-    yy_pred = mask*yy_pred  
-    
     return yy_pred
 
 def main():
@@ -152,7 +163,7 @@ def main():
     inputs = np.array([]).reshape(-1,14)
     Rac = np.array([]).reshape(-1,1)
     Llk = np.array([]).reshape(-1,1)
-    R_dowell = np.array([]).reshape(-1,12)
+    L_dowell = np.array([]).reshape(-1,1)
 
     for filename in os.listdir(folder_path):
         match = pattern.match(filename)
@@ -161,12 +172,12 @@ def main():
             Np = int(match.group(2)) 
 
             file_path = os.path.join(folder_path, filename)
-            inputs_i, Rac_i, Llk_i, R_dowell_i = get_dataset(file_path, Np, Ns)
+            inputs_i, Rac_i, Llk_i, L_dowell_i = get_dataset(file_path, Np, Ns)
 
         inputs = np.concatenate((inputs, inputs_i), axis = 0)
         Rac = np.concatenate((Rac, Rac_i), axis = 0)
         Llk = np.concatenate((Llk, Llk_i), axis = 0)
-        R_dowell = np.concatenate((R_dowell, R_dowell_i), axis = 0)
+        L_dowell = np.concatenate((L_dowell, L_dowell_i), axis = 0)
 
     # Preprocess
     dataset_IW, dataset_OW = preprocess(inputs, Llk, Rac)
@@ -174,46 +185,28 @@ def main():
     data_loader_OW = torch.utils.data.DataLoader(dataset_OW, batch_size=4, shuffle=False, **kwargs)
 
     # Load inductor model
-    # IW Ls
-    input_size = 10 
-    hidden_size = 107
-    model_inductor_IW_Ls = Net(input_size, hidden_size).to(device)
-    model_inductor_IW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_IW_inside.pth', map_location = torch.device('cpu')))
+    # IW
+    input_size = 12
+    hidden_size = 100
+    model_inductor_IW = Net(input_size, hidden_size).to(device)
+    model_inductor_IW.load_state_dict(torch.load('inductor/results_inductor/Model_2D_IW.pth', map_location = torch.device('cpu')))
 
-    # IW Lp
-    input_size = 10 
-    hidden_size = 101
-    model_inductor_IW_Lp = Net(input_size, hidden_size).to(device)
-    model_inductor_IW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_IW_outside.pth', map_location = torch.device('cpu')))
+    # OW
+    input_size = 11
+    hidden_size = 100
+    model_inductor_OW = Net(input_size, hidden_size).to(device)
+    model_inductor_OW.load_state_dict(torch.load('inductor/results_inductor/Model_2D_OW.pth', map_location = torch.device('cpu')))
 
-    # OW Ls
-    input_size = 8
-    hidden_size = 107
-    model_inductor_OW_Ls = Net(input_size, hidden_size).to(device)
-    model_inductor_OW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
+    # Output 2D data    
+    model_inductor_IW.eval()
+    model_inductor_OW.eval()
 
-    # OW Lp
-    input_size = 8
-    hidden_size = 101
-    model_inductor_OW_Lp = Net(input_size, hidden_size).to(device)
-    model_inductor_OW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_OW_outside.pth', map_location = torch.device('cpu')))
-
-    # Output 2D data
-    model_inductor_IW_Ls.eval()
-    model_inductor_IW_Lp.eval()
-    model_inductor_OW_Ls.eval()
-    model_inductor_OW_Lp.eval()
-
-    inductor_IW_Ls = get_inductor_model_output(model_inductor_IW_Ls, device, data_loader_IW, inputs, 1)
-    inductor_IW_Lp = get_inductor_model_output(model_inductor_IW_Lp, device, data_loader_IW, inputs, 0)
-    inductor_OW_Ls = get_inductor_model_output(model_inductor_OW_Ls, device, data_loader_OW, inputs, 1)
-    inductor_OW_Lp = get_inductor_model_output(model_inductor_OW_Lp, device, data_loader_OW, inputs, 0)
+    inductor_IW = get_inductor_model_output(model_inductor_IW, device, data_loader_IW)*L_dowell
+    inductor_OW = get_inductor_model_output(model_inductor_OW, device, data_loader_OW)*L_dowell
 
     # Calculate section and corner loss/inductance
-    section_inductor_IW_Ls = inductor_IW_Ls.T*inputs[:,12]
-    section_inductor_IW_Lp = inductor_IW_Lp.T*inputs[:,12]
-    section_inductor_OW_Ls = inductor_OW_Ls.T*inputs[:,13]*2
-    section_inductor_OW_Lp = inductor_OW_Lp.T*inputs[:,13]*2
+    section_inductor_IW = inductor_IW.T*inputs[:,12]
+    section_inductor_OW = inductor_OW.T*inputs[:,13]*2
 
     corner_radius_Ls = np.zeros((np.shape(inputs)[0], 6))
     corner_radius_Lp = np.zeros((np.shape(inputs)[0], 6))
@@ -238,21 +231,22 @@ def main():
                 corner_radius_Lp[i,j] = 0
                 length_Lp[i,j] = 0
 
-    corner_inductor_IW_Ls = 2*3.14*inductor_IW_Ls.T*np.mean(corner_radius_Ls, axis=1)
-    corner_inductor_IW_Lp = 2*3.14*inductor_IW_Lp.T*np.mean(corner_radius_Lp, axis=1)
-    corner_inductor_OW_Ls = 2*3.14*inductor_OW_Ls.T*np.mean(corner_radius_Ls, axis=1)
-    corner_inductor_OW_Lp = 2*3.14*inductor_OW_Lp.T*np.mean(corner_radius_Lp, axis=1)
+    corner_inductor_IW = 2*3.14*inductor_IW.T*(np.mean(corner_radius_Ls, axis=1) + np.mean(corner_radius_Lp, axis=1))/2
+    corner_inductor_OW = 2*3.14*inductor_OW.T*(np.mean(corner_radius_Ls, axis=1) + np.mean(corner_radius_Lp, axis=1))/2
  
     # Obtain correction factor
     inductance = np.squeeze(Llk.reshape(1,-1))
-    rest_inductor = inductance/2 - (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2
-    coef_inductor = rest_inductor / ((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2)
+    rest_inductor = inductance/2 - (section_inductor_IW + section_inductor_OW)
+    coef_inductor = rest_inductor / ((section_inductor_IW + section_inductor_OW) + (corner_inductor_IW + corner_inductor_OW)/2)
     print(f"inductor max corf: {np.max(coef_inductor)}")
     print(f"inductor min corf: {np.min(coef_inductor)}")
 
     # Save data
-    save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp, coef_inductor])
-    np.savetxt("dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
+    save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW, section_inductor_OW, corner_inductor_IW, corner_inductor_OW, coef_inductor])
+    save_data_inductor = save_data_inductor.T
+    np.random.shuffle(save_data_inductor)
+    save_data_inductor = save_data_inductor.T
+    np.savetxt("inductor/dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
 
 if __name__ == "__main__":
     main()

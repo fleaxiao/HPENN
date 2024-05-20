@@ -72,7 +72,7 @@ def get_dataset(adr, Np, Ns):
 
     hw = np.maximum(hw1+2*lcore_y1, hw2+2*lcore_y2)
     dw = lcore_x1 + Ns*dw1 + (Ns-1)*dww_ii_x + dww_x + Np*dw2 + (Np-1)*dww_oo_x + lcore_x2
-    inputs = np.concatenate((Np*np.ones_like(hw1), Ns*np.ones_like(hw1), hw1, hw2, dw1, dw2, dww_ii_x, dww_oo_x, dww_x, lcore_x1, hw, dw, lcs, dcs), axis = 1) 
+    inputs = np.concatenate((Np*np.ones_like(hw1), Ns*np.ones_like(hw1), hw1, hw2, dw1, dw2, dww_ii_x, dww_oo_x, dww_x, lcore_x1, hw, dw, lcs, dcs), axis = 1)
 
     outputs = df.iloc[0:data_length:, 21:].values
     Rac = np.sum(outputs[0:,0:12], axis=1).reshape(-1,1) 
@@ -82,6 +82,7 @@ def get_dataset(adr, Np, Ns):
     permeability = 1.256629e-6
     conductivity = 5.96e7
     skin_depth = np.sqrt(2/(2*3.14*10e3*permeability*conductivity))
+
     delta_1 = np.sqrt(hw1/hw)*dw1 / skin_depth
     delta_2 = np.sqrt(hw2/hw)*dw2 / skin_depth
     factor_1_1 = (np.sinh(2*delta_1)+np.sin(2*delta_1)) / (np.cosh(2*delta_1)-np.cos(2*delta_1))
@@ -171,24 +172,6 @@ def get_loss_model_output(model, device, data_loader, inputs, winding_number):
     
     return yy_pred
 
-# def get_inductor_model_output(model, device, data_loader, inputs, winding_number):
-#     y_pred = []
-#     with torch.no_grad():
-#         for inputs_tensor, _, _ in data_loader:
-#             outputs_tensor = model(inputs_tensor.to(device))
-#             y_pred.append(outputs_tensor)
-#     y_pred = torch.cat(y_pred, dim=0)
-#     yy_pred = y_pred.cpu().numpy()
-#     yy_pred = yy_pred * ((-5.0) - (-7.4)) + (-7.4)
-#     yy_pred = 10**yy_pred
-
-#     mask = np.zeros_like(yy_pred)
-#     for i, num_ones in enumerate(inputs[0:,winding_number]):
-#         mask[i, :int(num_ones)] = 1
-#     yy_pred = mask*yy_pred  
-    
-#     return yy_pred
-
 def main():
 
     # Check whether GPU is available
@@ -203,7 +186,7 @@ def main():
  
     # Load dataset       
     folder_path = 'dataset_3D'
-    pattern = re.compile(r'results_(\d+)_(\d+)_(\d+)\.csv')
+    pattern = re.compile(r'MFT_(\d+)_(\d+)_(\d+)\.csv')
     inputs = np.array([]).reshape(-1,14)
     Rac = np.array([]).reshape(-1,1)
     Llk = np.array([]).reshape(-1,1)
@@ -223,6 +206,7 @@ def main():
         Llk = np.concatenate((Llk, Llk_i), axis = 0)
         R_dowell = np.concatenate((R_dowell, R_dowell_i), axis = 0)
 
+    print(f"inputs shape: {np.shape(inputs)}")
     # Preprocess
     dataset_IW, dataset_OW = preprocess(inputs, Llk, Rac)
     data_loader_IW = torch.utils.data.DataLoader(dataset_IW, batch_size=4, shuffle=False, **kwargs)
@@ -253,31 +237,6 @@ def main():
     model_loss_OW_Lp = load_loss_model(input_size, hidden_size_sequence, device)
     model_loss_OW_Lp.load_state_dict(torch.load('results_loss/Model_2D_OW_Lp.pth', map_location = torch.device('cpu')))
 
-    # # Load inductor model
-    # # IW Ls
-    # input_size = 10 
-    # hidden_size = 107
-    # model_inductor_IW_Ls = Net(input_size, hidden_size).to(device)
-    # model_inductor_IW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_IW_inside.pth', map_location = torch.device('cpu')))
-
-    # # IW Lp
-    # input_size = 10 
-    # hidden_size = 101
-    # model_inductor_IW_Lp = Net(input_size, hidden_size).to(device)
-    # model_inductor_IW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_IW_outside.pth', map_location = torch.device('cpu')))
-
-    # # OW Ls
-    # input_size = 8
-    # hidden_size = 107
-    # model_inductor_OW_Ls = Net(input_size, hidden_size).to(device)
-    # model_inductor_OW_Ls.load_state_dict(torch.load('results_inductor/Model_2D_OW_inside.pth', map_location = torch.device('cpu')))
-
-    # # OW Lp
-    # input_size = 8
-    # hidden_size = 101
-    # model_inductor_OW_Lp = Net(input_size, hidden_size).to(device)
-    # model_inductor_OW_Lp.load_state_dict(torch.load('results_inductor/Model_2D_OW_outside.pth', map_location = torch.device('cpu')))
-
     # Output 2D data
     model_loss_IW_Ls.eval()
     model_loss_IW_Lp.eval()
@@ -289,26 +248,11 @@ def main():
     loss_OW_Ls = get_loss_model_output(model_loss_OW_Ls, device, data_loader_OW, inputs, 1)*R_dowell[:,:6]
     loss_OW_Lp = get_loss_model_output(model_loss_OW_Lp, device, data_loader_OW, inputs, 0)*R_dowell[:,6:]
 
-    # model_inductor_IW_Ls.eval()
-    # model_inductor_IW_Lp.eval()
-    # model_inductor_OW_Ls.eval()
-    # model_inductor_OW_Lp.eval()
-
-    # inductor_IW_Ls = get_inductor_model_output(model_inductor_IW_Ls, device, data_loader_IW, inputs, 1)
-    # inductor_IW_Lp = get_inductor_model_output(model_inductor_IW_Lp, device, data_loader_IW, inputs, 0)
-    # inductor_OW_Ls = get_inductor_model_output(model_inductor_OW_Ls, device, data_loader_OW, inputs, 1)
-    # inductor_OW_Lp = get_inductor_model_output(model_inductor_OW_Lp, device, data_loader_OW, inputs, 0)
-
     # Calculate section and corner loss/inductance
     section_loss_IW_Ls = np.sum(loss_IW_Ls, axis=1)*inputs[:,12]
     section_loss_IW_Lp = np.sum(loss_IW_Lp, axis=1)*inputs[:,12]
     section_loss_OW_Ls = np.sum(loss_OW_Ls, axis=1)*inputs[:,13]*2
     section_loss_OW_Lp = np.sum(loss_OW_Lp, axis=1)*inputs[:,13]*2
-
-    # section_inductor_IW_Ls = inductor_IW_Ls.T*inputs[:,12]
-    # section_inductor_IW_Lp = inductor_IW_Lp.T*inputs[:,12]
-    # section_inductor_OW_Ls = inductor_OW_Ls.T*inputs[:,13]*2
-    # section_inductor_OW_Lp = inductor_OW_Lp.T*inputs[:,13]*2
 
     corner_radius_Ls = np.zeros((np.shape(inputs)[0], 6))
     corner_radius_Lp = np.zeros((np.shape(inputs)[0], 6))
@@ -338,26 +282,15 @@ def main():
     corner_loss_OW_Ls = np.sum(2*3.14*loss_OW_Ls*corner_radius_Ls, axis=1)
     corner_loss_OW_Lp = np.sum(2*3.14*loss_OW_Lp*corner_radius_Lp, axis=1)
 
-    # corner_inductor_IW_Ls = 2*3.14*inductor_IW_Ls.T*np.mean(corner_radius_Ls, axis=1)
-    # corner_inductor_IW_Lp = 2*3.14*inductor_IW_Lp.T*np.mean(corner_radius_Lp, axis=1)
-    # corner_inductor_OW_Ls = 2*3.14*inductor_OW_Ls.T*np.mean(corner_radius_Ls, axis=1)
-    # corner_inductor_OW_Lp = 2*3.14*inductor_OW_Lp.T*np.mean(corner_radius_Lp, axis=1)
- 
     # Obtain correction factor
-    # total_1 = (np.sum(loss_IW_Ls*length_Ls, axis=1) + np.sum(loss_IW_Lp*length_Lp, axis=1)) / 1e3
-    # total_2 = (np.sum(loss_OW_Ls*length_Ls, axis=1) + np.sum(loss_OW_Lp*length_Lp, axis=1)) / 1e3
-    loss = np.squeeze(Rac.reshape(1,-1))  
+    loss = np.squeeze(Rac.reshape(1,-1))
     rest_loss = loss - (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)
-    coef_loss = rest_loss / ((section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)+(corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2)
+    coef_loss = rest_loss / ((section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp) + (corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2)
+    max_inputs = [np.argmax(coef_loss)]
+    print(f"max inputs: {max_inputs}")
     print(f"loss max corf: {np.max(coef_loss)}")
     print(f"loss min corf: {np.min(coef_loss)}")
     print(f"loss mean corf: {np.mean(coef_loss)}")
-
-    # inductance = np.squeeze(Llk.reshape(1,-1))
-    # rest_inductor = inductance/2 - (section_inductor_IW_Ls + section_inductor_IW_Lp + section_inductor_OW_Ls + section_inductor_OW_Lp)*2
-    # coef_inductor = rest_inductor / ((corner_inductor_IW_Lp + corner_inductor_IW_Ls + corner_inductor_OW_Lp + corner_inductor_OW_Ls)/2)
-    # print(f"inductor max corf: {np.max(coef_inductor)}")
-    # print(f"inductor min corf: {np.min(coef_inductor)}")
 
     # Save data
     save_data_loss = np.vstack([inputs.T, loss, section_loss_IW_Ls, section_loss_IW_Lp, section_loss_OW_Ls, section_loss_OW_Lp, corner_loss_IW_Ls, corner_loss_IW_Lp, corner_loss_OW_Ls, corner_loss_OW_Lp, coef_loss])
@@ -365,9 +298,6 @@ def main():
     np.random.shuffle(save_data_loss)
     save_data_loss = save_data_loss.T
     np.savetxt("dataset_coef/dataset_3D_loss.csv", save_data_loss, delimiter=',')
-
-    # save_data_inductor = np.vstack([inputs.T, inductance, section_inductor_IW_Ls, section_inductor_IW_Lp, section_inductor_OW_Ls, section_inductor_OW_Lp, corner_inductor_IW_Ls, corner_inductor_IW_Lp, corner_inductor_OW_Ls, corner_inductor_OW_Lp, coef_inductor])
-    # np.savetxt("dataset_coef/dataset_3D_inductor.csv", save_data_inductor, delimiter=',')
 
 if __name__ == "__main__":
     main()

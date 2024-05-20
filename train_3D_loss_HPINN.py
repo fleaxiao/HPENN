@@ -12,7 +12,7 @@ MODEL_FILE = "results_coef/Model_3D_loss.pth"
 ERROR_FILE = "results_coef/train_3D_error_loss.csv"
 
 # Hyperparameters
-NUM_EPOCH = 600 #! 1000
+NUM_EPOCH = 800 #! 1000
 BATCH_SIZE = 8
 LR_INI = 0.0006758499286351658
 DECAY_EPOCH = 100
@@ -21,11 +21,11 @@ DECAY_RATIO = 0.5
 # Neural Network Structure
 input_size = 14
 output_size = 1
-hidden_size = 100
+hidden_size = 15
 hidden_layers = 1
 
-begin = 700
-data_length = 700
+begin = 0
+data_length = 100
 
 # Define model structures and functions
 class Net(nn.Module):
@@ -92,8 +92,8 @@ def get_dataset(adr):
     outputs_min = np.min(outputs, axis=1, keepdims=True)
     print(outputs_max)
     print(outputs_min)
-    outputs_max = np.array([0.25])
-    outputs_min = np.array([-0.05])
+    outputs_max = np.array([0.06])
+    outputs_min = np.array([0])
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -127,7 +127,7 @@ def main():
 
     # Load and spit dataset
     dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_coef/dataset_3D_loss.csv') 
-    train_size = int(150) 
+    train_size = int(50) 
     valid_size = int(1)
     test_size  = len(dataset) - train_size - valid_size
     train_dataset, valid_dataset, test_dataset = torch.utils.data.random_split(dataset, [train_size, valid_size, test_size])

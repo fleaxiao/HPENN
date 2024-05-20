@@ -128,7 +128,7 @@ def get_3D_model_output(model, device, data_loader):
             y_pred.append(outputs_tensor)
     y_pred = torch.cat(y_pred, dim=0)
     yy_pred = y_pred.cpu().numpy()
-    yy_pred = yy_pred * ((0.25) - (-0.05)) + (-0.05)  #! modified
+    yy_pred = yy_pred * ((0.06) - (0)) + (0)  #! modified
     yy_pred = 10**yy_pred
    
     return yy_pred
@@ -175,6 +175,8 @@ def main():
     lcore_x2 = np.array([[3e-3]])
     lcore_y1 = np.array([[5e-3]])
     lcore_y2 = np.array([[5e-3]])
+    # hw = np.array([[41e-3]])
+    # dw = np.array([[11.8e-3]])
     lcs = np.array([[32e-3]])
     dcs = np.array([[11e-3]])
     
@@ -261,6 +263,11 @@ def main():
     section_loss_OW_Ls = np.sum(loss_OW_Ls, axis=1)*inputs[:,13]*2
     section_loss_OW_Lp = np.sum(loss_OW_Lp, axis=1)*inputs[:,13]*2
 
+    print(f"Section Loss_IW_Ls: {section_loss_IW_Ls}")
+    print(f"Section Loss_IW_Lp: {section_loss_IW_Lp}")
+    print(f"Section Loss_OW_Ls: {section_loss_OW_Ls}")
+    print(f"Section Loss_OW_Lp: {section_loss_OW_Lp}")
+
     corner_radius_Ls = np.zeros((np.shape(inputs)[0], 6))
     corner_radius_Lp = np.zeros((np.shape(inputs)[0], 6))
     length_Ls = np.zeros((np.shape(inputs)[0], 6))
@@ -289,10 +296,15 @@ def main():
     corner_loss_OW_Ls = np.sum(2*3.14*loss_OW_Ls*corner_radius_Ls, axis=1)
     corner_loss_OW_Lp = np.sum(2*3.14*loss_OW_Lp*corner_radius_Lp, axis=1)
 
+    print(f"Corner Loss_IW_Ls: {corner_loss_IW_Ls}")
+    print(f"Corner Loss_IW_Lp: {corner_loss_IW_Lp}")
+    print(f"Corner Loss_OW_Ls: {corner_loss_OW_Ls}")
+    print(f"Corner Loss_OW_Lp: {corner_loss_OW_Lp}")
+
     # Load 3D model
     hidden_layers = 1
     input_size = 14
-    hidden_size = 100
+    hidden_size = 10
     model_loss_3D = load_3D_model(hidden_layers, input_size, hidden_size, device)
     model_loss_3D.load_state_dict(torch.load('results_coef/Model_3D_loss.pth', map_location = torch.device('cpu')))
 
@@ -300,6 +312,8 @@ def main():
 
     coef = get_3D_model_output(model_loss_3D, device, data_loader_3D)
     loss = (section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp) + coef*((section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)+(corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2)
+    print(f"IW & OW Loss: {section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp}")
+    print(f"Corner Loss: {(section_loss_IW_Ls + section_loss_IW_Lp + section_loss_OW_Ls + section_loss_OW_Lp)+(corner_loss_IW_Lp + corner_loss_IW_Ls + corner_loss_OW_Lp + corner_loss_OW_Ls)/2}")
     print(f"Coef: {coef}")
     print(f"Loss: {loss}")
 

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 def main():
-    adr = 'dataset_2D/Trainset_5w_OW_paper.csv'
+    adr = 'dataset_2D/Trainset_5w_IW_paper.csv'
     df = pd.read_csv(adr, header=None)
     data_length = 50_000
    
@@ -45,7 +45,7 @@ def main():
     coef = (L_real / L)
 
     coef = np.concatenate((inputs, coef), axis=0)
-    np.savetxt("inductor/dataset_coef/dataset_OW_coef.csv", coef, delimiter=',')
+    np.savetxt("inductor/dataset_coef/dataset_IW_coef.csv", coef, delimiter=',')
 
     print(np.max(coef,axis=1))
     print(np.min(coef,axis=1))

@@ -16,11 +16,12 @@ DECAY_RATIO = 0.95
 # Neural Network Structure
 input_size = 14
 output_size = 1
-hidden_size = 100
+hidden_size = 15
 hidden_layers = 1
 
-data_length = 700
-begin = 0
+data_length = 900
+begin = 600
+
 # Define model structures and functions
 class Net(nn.Module):
     
@@ -58,7 +59,7 @@ def get_dataset(adr):
 
     # normalization
     inputs[0] = (inputs[0] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
-    inputs[1] = (inputs[1] - np.log10(3e-1)) / (np.log10(4e-1) - np.log10(3e-1))
+    inputs[1] = (inputs[1] - np.log10(3e-1)) / (np.log10(6e-1) - np.log10(3e-1))
     inputs[2] = (inputs[2] - np.log10(2e-2)) / (np.log10(7e-2) - np.log10(2e-2))
     inputs[3] = (inputs[3] - np.log10(1e-2)) / (np.log10(7e-2) - np.log10(1e-2))
     inputs[4] = (inputs[4] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
@@ -71,6 +72,7 @@ def get_dataset(adr):
     inputs[11] = (inputs[11] - np.log10(5.5e-3)) / (np.log10(2.26e-2) - np.log10(5.5e-3))
     inputs[12] = (inputs[12] - np.log10(2e-2)) / (np.log10(8e-2) - np.log10(2e-2))
     inputs[13] = (inputs[13] - np.log10(6e-3)) / (np.log10(4e-2) - np.log10(6e-3))
+
     # inputs_max = np.max(inputs, axis=1, keepdims=True)
     # inputs_min = np.min(inputs, axis=1, keepdims=True)
     # denom = inputs_max - inputs_min
@@ -79,8 +81,8 @@ def get_dataset(adr):
 
     # outputs_max = np.max(outputs, axis=1, keepdims=True)
     # outputs_min = np.min(outputs, axis=1, keepdims=True)
-    outputs_max = np.array([0.25])
-    outputs_min = np.array([-0.05])
+    outputs_max = np.array([0.06])
+    outputs_min = np.array([0])
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer

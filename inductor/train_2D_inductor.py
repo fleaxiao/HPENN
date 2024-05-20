@@ -7,10 +7,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-train_layer = 'outside' #! adjusted in each trainning
-LOG_FILE = f"inductor/results_inductor/train_IW_{train_layer}.txt"
-MODEL_FILE = f"inductor/results_inductor/Model_2D_IW_{train_layer}.pth"
-ERROR_FILE = f"inductor/results_inductor/train_error_IW_{train_layer}.csv"
+LOG_FILE = f"inductor/results_inductor/train_IW.txt"
+MODEL_FILE = f"inductor/results_inductor/Model_2D_IW.pth"
+ERROR_FILE = f"inductor/results_inductor/train_error_IW.csv"
 
 # Hyperparameters
 NUM_EPOCH = 600
@@ -20,7 +19,7 @@ DECAY_EPOCH = 100
 DECAY_RATIO = 0.5
 
 # Neural Network Structure
-input_size = 10 #! IW -> 12, OW -> 10
+input_size = 12 #! IW -> 12, OW -> 11
 output_size = 1
 hidden_size = 100
 hidden_layers = 3
@@ -58,17 +57,14 @@ def get_dataset(adr):
     data_length = 50_000
    
     # pre-process
-    inputs = df.iloc[:10, 0:data_length].values #! IW -> 12, OW -> 10
+    inputs = df.iloc[:12, 0:data_length].values
     inputs[:2] = inputs[:2]/10
     
-    outputs = df.iloc[24:30, 0:data_length].values #! Inside -> 24, Outside -> 30
+    outputs = df.iloc[12:13, 0:data_length].values
     # outputs = outputs[train_layer-1:train_layer] # train specific layer power loss
     # outputs = np.concatenate([outputs[train_layer-1:train_layer],outputs[train_layer+11:train_layer+12]*1e3]) # train specific layer with two outputs
     # outputs[outputs == 0] = 1 # outputs = np.where(outputs <= 0, 1e-10, outputs) # train multiple layers
-    outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
-    inputs = inputs[:, np.squeeze(outputs > 1e-8)]
-    outputs = outputs[:, np.squeeze(outputs > 1e-8)]
-    print(np.min(outputs), np.max(outputs))
+    # outputs = np.sum(outputs, axis = 0).reshape(1,-1) # train the total inductance of a whole section   
 
     # log tranfer
     inputs = np.log10(inputs)
@@ -85,14 +81,14 @@ def get_dataset(adr):
     inputs[7] = (inputs[7] - np.log10(1e-4)) / (np.log10(3e-4) - np.log10(1e-4))
     inputs[8] = (inputs[8] - np.log10(5e-4)) / (np.log10(6e-3) - np.log10(5e-4))
     inputs[9] = (inputs[9] - np.log10(1e-3)) / (np.log10(4e-3) - np.log10(1e-3))
-    # inputs[10] = (inputs[10] - np.log10(2.2e-2)) / (np.log10(8.2e-2) - np.log10(2.2e-2))
-    # inputs[11] = (inputs[11] - np.log10(5.5e-3)) / (np.log10(2.26e-2) - np.log10(5.5e-3))
+    inputs[10] = (inputs[10] - np.log10(2.2e-2)) / (np.log10(8.2e-2) - np.log10(2.2e-2))
+    inputs[11] = (inputs[11] - np.log10(5.5e-3)) / (np.log10(2.26e-2) - np.log10(5.5e-3))
 
-    outputs_max = np.max(outputs, axis=1, keepdims=True)
-    outputs_min = np.min(outputs, axis=1, keepdims=True)
+    # outputs_max = np.max(outputs, axis=1, keepdims=True)
+    # outputs_min = np.min(outputs, axis=1, keepdims=True)
+    outputs_max = np.array([-0.6])
+    outputs_min = np.array([0.7])
     print(outputs_max, outputs_min)
-    # outputs_max = np.array([-1])
-    # outputs_min = np.array([-8])
     outputs = (outputs - outputs_min) / (outputs_max - outputs_min)
 
     # tensor transfer
@@ -125,7 +121,7 @@ def main():
         print("Now this program runs on cpu")
 
     # Load and spit dataset
-    dataset, test_outputs_max , test_outputs_min = get_dataset('dataset_2D/Trainset_5w_OW_paper.csv') #! adjusted in each trainning
+    dataset, test_outputs_max , test_outputs_min = get_dataset('inductor/dataset_coef/dataset_IW_coef.csv') #! adjusted in each trainning
     train_size = int(0.6 * len(dataset)) 
     valid_size = int(0.2 * len(dataset))
     test_size  = len(dataset) - train_size - valid_size
