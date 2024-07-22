@@ -13,7 +13,7 @@ MODEL_FILE = f"Model_2D_IW_{train_layer}.pth"
 ERROR_FILE = f"train_error_IW_{train_layer}.csv"
 
 # Hyperparameters
-NUM_EPOCH = 10 #! 600
+NUM_EPOCH = 1 #! 600
 BATCH_SIZE = 32
 LR_INI = 0.0006758499286351658
 DECAY_EPOCH = 100
