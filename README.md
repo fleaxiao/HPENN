@@ -20,3 +20,8 @@ git clone https://github.com/fleaxiao/HPINN.git
 3. data_generation_3D -> train_3D_loss -> test_3D_loss
 4. Use_HPINN
 ```
+## Citation
+If you use this code or data in your research, please cite our work as follows:
+```
+Xiao Yang, Liangcai Shu, Dongsheng Yang. Hierarchical Physics-Informed Neural Network Framework for 3D Magnetic Modeling of Medium Frequency Transformers. TechRxiv. April 29, 2024.
+```
