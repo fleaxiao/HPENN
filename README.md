@@ -1,6 +1,6 @@
-# Hierarchical Physics-Informed Neural Network Framework for 3D Magnetic Modeling of Medium Frequency Transformers
+# Hierarchical Physics-Embedding Neural Network Framework for 3D Magnetic Modeling of Medium Frequency Transformers
 
-Hierarchical Physics-Informed Neural Network (HPINN) Framework is a typically designed tool for the 3D Magnetic Modeling of Medium Frequency Transformers (MFTs).
+Hierarchical Physics-Embedding Neural Network (HPENN) Framework is a typically designed tool for the 3D Magnetic Modeling of Medium Frequency Transformers (MFTs).
 
 This respository includs all the necessary elements for training, testing, and using HPINN framework.
 
@@ -11,7 +11,7 @@ cd [path-to-folder]
 ```
 - Clone the temperatur conversion repository:
 ```bash
-git clone https://github.com/fleaxiao/HPINN.git
+git clone https://github.com/fleaxiao/HPENN.git
 ```
 - Implementation order:
 ```
