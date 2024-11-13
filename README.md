@@ -18,7 +18,7 @@ git clone https://github.com/fleaxiao/HPENN.git
 1. data_generation_2D -> train_2D_loss -> test_2D_loss
 2. model_combine
 3. data_generation_3D -> train_3D_loss -> test_3D_loss
-4. Use_HPINN
+4. Use_HPENN
 ```
 ## Citation
 If you use this code or data in your research, please cite our work as follows:
