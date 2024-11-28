@@ -2,7 +2,7 @@
 
 Hierarchical Physics-Embedding Neural Network (HPENN) Framework is a typically designed tool for the 3D Magnetic Modeling of Medium Frequency Transformers (MFTs).
 
-This respository includs all the necessary elements for training, testing, and using HPINN framework.
+This respository includs all the necessary elements for training, testing, and using HPENN framework.
 
 ## Setup
 - Open a terminal and change directory to this program folder:
@@ -23,5 +23,5 @@ git clone https://github.com/fleaxiao/HPENN.git
 ## Citation
 If you use this code or data in your research, please cite our work as follows:
 ```
-Xiao Yang, Liangcai Shu, Dongsheng Yang. Hierarchical Physics-Informed Neural Network Framework for 3D Magnetic Modeling of Medium Frequency Transformers. TechRxiv. April 29, 2024.
+X. Yang, L. Shu and D. Yang, "Hierarchical Physics-Embedding Neural Network Framework for 3D Magnetic Modeling of Medium Frequency Transformers," in IEEE Transactions on Power Electronics, doi: 10.1109/TPEL.2024.3501573.
 ```
